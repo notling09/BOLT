@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../models/track.dart';
 import '../services/location_service.dart';
+import 'race_screen.dart';
 
 /// Die drei Schritte der Streckenvermessung (UC1 / User-Story 1).
 enum _Step {
@@ -114,6 +116,29 @@ class _MeasureScreenState extends State<MeasureScreen> {
     }
   }
 
+  /// Baut aus der gerade vermessenen Strecke einen Track und startet den Sprint.
+  /// (Noch ohne Persistenz – der Track lebt nur für diesen Lauf.)
+  void _startSprint() {
+    final start = _startPos;
+    final end = _endPos;
+    final dist = _distance;
+    if (start == null || end == null || dist == null) return;
+
+    final name = _nameController.text.trim();
+    final track = Track(
+      name: name.isEmpty ? 'Strecke' : name,
+      startLat: start.latitude,
+      startLng: start.longitude,
+      endLat: end.latitude,
+      endLng: end.longitude,
+      distanceMeters: dist,
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => RaceScreen(track: track)),
+    );
+  }
+
   void _reset() {
     setState(() {
       _step = _Step.idle;
@@ -163,6 +188,17 @@ class _MeasureScreenState extends State<MeasureScreen> {
             _buildNameField(),
             if (_step == _Step.done) ...[
               const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _startSprint,
+                icon: const Icon(Icons.timer),
+                label: const Text('DIESE STRECKE SPRINTEN'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _reset,
                 icon: const Icon(Icons.refresh),
