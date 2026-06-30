@@ -43,15 +43,45 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// sonst laeuft das GPS im Hintergrund weiter (Akku!).
   StreamSubscription<Position>? _posSub;
 
+  /// Genauigkeit (±Meter) der zuletzt empfangenen Position. Punkt 1: anzeigen.
+  double? _currentAccuracy;
+
   /// Gesetzt, wenn ein GPS-Aufruf fehlschlug (serviceDisabled / permissionDenied…).
   LocationStatus? _gpsError;
 
   /// Unter dieser Distanz warnen wir vor GPS-Rauschen (±3–5 m Ungenauigkeit).
   static const double _minDistanceMeters = 10.0;
 
+  /// Punkt 3 (Ausreisser-Filter): Live-Positionen mit schlechterer Genauigkeit
+  /// als dieser Wert werden NICHT in die Distanz eingerechnet.
+  static const double _maxAccuracyMeters = 20.0;
+
+  // --- Stabile Punkterfassung (warten, bis genau – dann mitteln) ---
+
+  /// Eine Messung zaehlt nur als "gut", wenn ihre Genauigkeit <= diesem Wert ist.
+  static const double _goodAccuracyMeters = 10.0;
+
+  /// So viele GUTE Messungen sammeln und mitteln wir pro Punkt.
+  static const int _requiredSamples = 5;
+
+  /// Nach so vielen Sekunden ohne genug gute Messungen brechen wir ehrlich ab.
+  static const int _captureTimeoutSeconds = 25;
+
+  /// True, waehrend wir auf ein stabiles Signal warten/sammeln.
+  bool _isCapturing = false;
+
+  /// Anzahl bisher gesammelter guter Messungen (fuer die Fortschrittsanzeige).
+  int _captureCount = 0;
+
+  /// Laufende Erfassung – muss bei dispose/reset beendet werden.
+  StreamSubscription<Position>? _captureSub;
+  Timer? _captureTimer;
+
   @override
   void dispose() {
     _posSub?.cancel(); // GPS-Strom stoppen, sonst laeuft er im Hintergrund weiter.
+    _captureSub?.cancel();
+    _captureTimer?.cancel();
     _nameController.dispose();
     super.dispose();
   }
@@ -66,27 +96,43 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _gpsError = null;
     });
 
-    final result = await _locationService.getCurrentPosition();
+    // 1. Berechtigung/GPS-Dienst einmalig pruefen (mit Fehlerbehandlung).
+    final perm = await _locationService.getCurrentPosition();
+    if (!mounted) return;
+    if (!perm.isSuccess) {
+      setState(() {
+        _gpsError = perm.status;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // 2. Stabilen Startpunkt erfassen: warten, bis genug GUTE Messungen da sind.
+    setState(() {
+      _isLoading = false;
+      _isCapturing = true;
+      _captureCount = 0;
+    });
+    final start = await _captureStablePosition();
     if (!mounted) return;
 
-    if (result.isSuccess) {
-      final start = result.position!;
-      setState(() {
-        _startPos = start;
-        // Vorherige Zielmessung verwerfen, falls der Nutzer neu startet.
-        _endPos = null;
-        _distance = null;
-        _liveDistance = 0; // Am Startpunkt sind es 0 m.
-        _step = _Step.startSet;
-        _isLoading = false;
-      });
-      _startLiveTracking(start); // ab jetzt live mitzaehlen
-    } else {
-      setState(() {
-        _gpsError = result.status;
-        _isLoading = false;
-      });
+    if (start == null) {
+      setState(() => _isCapturing = false);
+      _showNoSignalHint(); // kein gutes Signal -> gar nicht messen
+      return;
     }
+
+    setState(() {
+      _isCapturing = false;
+      _startPos = start;
+      // Vorherige Zielmessung verwerfen, falls der Nutzer neu startet.
+      _endPos = null;
+      _distance = null;
+      _liveDistance = 0; // Am Startpunkt sind es 0 m.
+      _currentAccuracy = start.accuracy;
+      _step = _Step.startSet;
+    });
+    _startLiveTracking(start); // ab jetzt live mitzaehlen
   }
 
   /// Startet das Live-Mitzaehlen: abonniert den Positions-Strom und berechnet
@@ -96,13 +142,20 @@ class _MeasureScreenState extends State<MeasureScreen> {
     _posSub?.cancel(); // evtl. altes Abo zuerst beenden
     _posSub = _locationService.positionStream().listen((pos) {
       if (!mounted) return;
-      final d = Geolocator.distanceBetween(
-        start.latitude,
-        start.longitude,
-        pos.latitude,
-        pos.longitude,
-      );
-      setState(() => _liveDistance = d);
+      setState(() {
+        // Punkt 1: Genauigkeit IMMER aktualisieren, damit der Nutzer sie sieht.
+        _currentAccuracy = pos.accuracy;
+        // Punkt 3: zu ungenaue Positionen NICHT in die Distanz einrechnen –
+        // sonst verfaelschen Ausreisser den Wert.
+        if (pos.accuracy <= _maxAccuracyMeters) {
+          _liveDistance = Geolocator.distanceBetween(
+            start.latitude,
+            start.longitude,
+            pos.latitude,
+            pos.longitude,
+          );
+        }
+      });
     });
   }
 
@@ -112,56 +165,157 @@ class _MeasureScreenState extends State<MeasureScreen> {
     final start = _startPos;
     if (start == null) return;
 
+    // Live-Mitzaehlen pausieren, waehrend wir den Zielpunkt stabil erfassen.
+    _posSub?.cancel();
+    _posSub = null;
+
     setState(() {
       _isLoading = true;
       _gpsError = null;
     });
 
-    final result = await _locationService.getCurrentPosition();
+    // 1. Berechtigung/GPS-Dienst pruefen.
+    final perm = await _locationService.getCurrentPosition();
+    if (!mounted) return;
+    if (!perm.isSuccess) {
+      setState(() {
+        _gpsError = perm.status;
+        _isLoading = false;
+      });
+      _startLiveTracking(start); // Live-Anzeige wieder aktivieren
+      return;
+    }
+
+    // 2. Stabilen Zielpunkt erfassen (warten + mitteln).
+    setState(() {
+      _isLoading = false;
+      _isCapturing = true;
+      _captureCount = 0;
+    });
+    final end = await _captureStablePosition();
     if (!mounted) return;
 
-    if (result.isSuccess) {
-      // Live-Mitzaehlen stoppen – ab jetzt ist die Distanz eingefroren.
-      _posSub?.cancel();
-      _posSub = null;
-
-      // position ist garantiert non-null wenn isSuccess == true.
-      final end = result.position!;
-      // Haversine-Distanz zwischen zwei GPS-Punkten in Metern.
-      final dist = Geolocator.distanceBetween(
-        start.latitude,
-        start.longitude,
-        end.latitude,
-        end.longitude,
-      );
-
-      setState(() {
-        _endPos = end;
-        _distance = dist;
-        _liveDistance = null; // Live-Wert nicht mehr relevant
-        _step = _Step.done;
-        _isLoading = false;
-      });
-    } else {
-      setState(() {
-        _gpsError = result.status;
-        _isLoading = false;
-      });
+    if (end == null) {
+      setState(() => _isCapturing = false);
+      _showNoSignalHint();
+      _startLiveTracking(start); // weiter live anzeigen, Nutzer kann erneut versuchen
+      return;
     }
+
+    // Haversine-Distanz zwischen den beiden gemittelten Punkten in Metern.
+    final dist = Geolocator.distanceBetween(
+      start.latitude,
+      start.longitude,
+      end.latitude,
+      end.longitude,
+    );
+
+    setState(() {
+      _isCapturing = false;
+      _endPos = end;
+      _distance = dist;
+      _liveDistance = null; // Live-Wert nicht mehr relevant
+      _currentAccuracy = end.accuracy; // gemittelte Genauigkeit der Ziel-Messung
+      _step = _Step.done;
+    });
   }
 
   void _reset() {
     _posSub?.cancel(); // laufendes Live-Abo beenden
     _posSub = null;
+    _captureSub?.cancel(); // laufende Punkterfassung beenden
+    _captureSub = null;
+    _captureTimer?.cancel();
+    _captureTimer = null;
     setState(() {
       _step = _Step.idle;
       _startPos = null;
       _endPos = null;
       _distance = null;
       _liveDistance = null;
+      _currentAccuracy = null;
+      _isCapturing = false;
+      _captureCount = 0;
       _gpsError = null;
       _nameController.clear();
     });
+  }
+
+  /// Sammelt mehrere GUTE GPS-Messungen und mittelt sie zu einem stabilen Punkt.
+  /// Gibt `null` zurueck, wenn nicht rechtzeitig genug gute Messungen kamen
+  /// (dann messen wir bewusst gar nicht – lieber nichts als ein falscher Wert).
+  Future<Position?> _captureStablePosition() async {
+    final samples = <Position>[];
+    final completer = Completer<Position?>();
+
+    void finish(Position? result) {
+      _captureTimer?.cancel();
+      _captureTimer = null;
+      _captureSub?.cancel();
+      _captureSub = null;
+      if (!completer.isCompleted) completer.complete(result);
+    }
+
+    _captureSub = _locationService.positionStream().listen((pos) {
+      if (!mounted) return finish(null);
+      // Genauigkeit live zeigen, damit der Nutzer sieht, wie es besser wird.
+      setState(() => _currentAccuracy = pos.accuracy);
+      // Nur GUTE Messungen sammeln.
+      if (pos.accuracy <= _goodAccuracyMeters) {
+        samples.add(pos);
+        setState(() => _captureCount = samples.length);
+        if (samples.length >= _requiredSamples) {
+          finish(_averagePosition(samples));
+        }
+      }
+    });
+
+    // Sicherheitsnetz: nach X Sekunden ohne genug gute Messungen abbrechen.
+    _captureTimer = Timer(
+      const Duration(seconds: _captureTimeoutSeconds),
+      () => finish(null),
+    );
+
+    return completer.future;
+  }
+
+  /// Mittelt mehrere Positionen zu einer (Durchschnitt von Lat/Lng/Genauigkeit).
+  /// Das glaettet das GPS-Rauschen deutlich.
+  Position _averagePosition(List<Position> samples) {
+    double lat = 0, lng = 0, acc = 0;
+    for (final p in samples) {
+      lat += p.latitude;
+      lng += p.longitude;
+      acc += p.accuracy;
+    }
+    final n = samples.length;
+    return Position(
+      latitude: lat / n,
+      longitude: lng / n,
+      timestamp: DateTime.now(),
+      accuracy: acc / n,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+    );
+  }
+
+  /// Roter Hinweis, wenn kein ausreichend genaues Signal zustande kam.
+  void _showNoSignalHint() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Kein ausreichend genaues GPS-Signal. Geh auf offenes Feld '
+          '(freier Himmel) und versuch es nochmal.',
+        ),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -236,12 +390,18 @@ class _MeasureScreenState extends State<MeasureScreen> {
       ),
       child: Column(
         children: [
-          if (_isLoading)
+          if (_isLoading || _isCapturing)
             const CircularProgressIndicator(color: Colors.amber)
           else
             Icon(icon, size: 56, color: Colors.amber),
           const SizedBox(height: 16),
-          Text(text, textAlign: TextAlign.center),
+          Text(
+            _isCapturing
+                ? 'Warte auf gutes GPS-Signal…\n'
+                    '$_captureCount/$_requiredSamples gute Messungen'
+                : text,
+            textAlign: TextAlign.center,
+          ),
           if (_startPos != null) ...[
             const SizedBox(height: 16),
             _coordRow('Start', _startPos!),
@@ -272,8 +432,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   /// Zwei Aktions-Buttons nebeneinander: STARTPUNKT SETZEN | ZIELPUNKT SETZEN.
   Widget _buildActionButtons() {
-    final startActive = !_isLoading;
-    final endActive = !_isLoading && _step != _Step.idle;
+    final startActive = !_isLoading && !_isCapturing;
+    final endActive = !_isLoading && !_isCapturing && _step != _Step.idle;
 
     return Row(
       children: [
@@ -410,6 +570,11 @@ class _MeasureScreenState extends State<MeasureScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          // Punkt 1: aktuelle GPS-Genauigkeit (±X m), farbcodiert.
+          if (_currentAccuracy != null) ...[
+            const SizedBox(height: 8),
+            _buildAccuracyRow(),
+          ],
           if (tooShort)
             const Padding(
               padding: EdgeInsets.only(top: 6),
@@ -420,11 +585,14 @@ class _MeasureScreenState extends State<MeasureScreen> {
               ),
             )
           else if (isLive)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Geh zum Ziel – die Distanz zählt live mit.',
-                style: TextStyle(color: Colors.white38, fontSize: 11),
+                (_currentAccuracy != null && _currentAccuracy! > _maxAccuracyMeters)
+                    ? 'GPS-Signal zu ungenau – Distanz pausiert.\n'
+                        'Geh nach draußen oder warte auf besseres Signal.'
+                    : 'Geh zum Ziel – die Distanz zählt live mit.',
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
               ),
             )
           else if (dist != null)
@@ -437,6 +605,35 @@ class _MeasureScreenState extends State<MeasureScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Punkt 1: zeigt die GPS-Genauigkeit (±X m) farbcodiert an.
+  /// gut (<= 8 m, grün) · mittel (<= 20 m, orange) · schlecht (> 20 m, rot).
+  Widget _buildAccuracyRow() {
+    final acc = _currentAccuracy!;
+    final Color color;
+    final String quality;
+    if (acc <= 8) {
+      color = Colors.greenAccent;
+      quality = 'gut';
+    } else if (acc <= _maxAccuracyMeters) {
+      color = Colors.orange;
+      quality = 'mittel';
+    } else {
+      color = Colors.redAccent;
+      quality = 'schlecht';
+    }
+
+    return Row(
+      children: [
+        Icon(Icons.gps_fixed, size: 14, color: color),
+        const SizedBox(width: 6),
+        Text(
+          'GPS-Genauigkeit: ±${acc.toStringAsFixed(0)} m ($quality)',
+          style: TextStyle(color: color, fontSize: 12),
+        ),
+      ],
     );
   }
 

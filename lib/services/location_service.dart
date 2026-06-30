@@ -65,7 +65,7 @@ class LocationService {
     // 3. Berechtigung vorhanden (whileInUse oder always) → Position auslesen.
     final position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high, // präzises GPS für kurze Sprints
+        accuracy: LocationAccuracy.best, // hoechste Praezision fuer kurze Sprints
       ),
     );
     return LocationResult(LocationStatus.success, position);
@@ -79,7 +79,7 @@ class LocationService {
   Stream<Position> positionStream() {
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.best,
         distanceFilter: 0,
       ),
     );
