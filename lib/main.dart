@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/gps_test_screen.dart';
+import 'screens/measure_screen.dart';
 
 /// Einstiegspunkt der App.
 ///
@@ -89,6 +90,22 @@ class HomeScreen extends StatelessWidget {
               ),
               icon: const Icon(Icons.my_location),
               label: const Text('GPS testen'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const MeasureScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.straighten),
+              label: const Text('Strecke vermessen'),
             ),
           ],
         ),
