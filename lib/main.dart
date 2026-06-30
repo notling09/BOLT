@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-void main() {
+/// Einstiegspunkt der App.
+///
+/// `async`, weil wir VOR dem Start zwei Systemeinstellungen setzen müssen.
+Future<void> main() async {
+  // Stellt sicher, dass das Flutter-Framework bereit ist, bevor wir
+  // SystemChrome (Systemeinstellungen wie Bildschirm-Ausrichtung) anfassen.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Konzept S. 11: BOLT ist nur fürs Hochformat (Portrait) gedacht.
+  // Wir sperren die App auf "portraitUp" – kein Querformat.
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
   runApp(const BoltApp());
 }
 
@@ -14,9 +28,14 @@ class BoltApp extends StatelessWidget {
     return MaterialApp(
       title: 'BOLT',
       debugShowCheckedModeBanner: false,
+      // Dark Theme mit gelbem Akzent – passend zu den Mockups (Konzept S. 9–10).
       theme: ThemeData(
-        // Gelb passt zum "Blitz"-Thema (Bolt = Blitz) und zur Energie der App.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.amber,
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
       ),
       home: const HomeScreen(),
@@ -25,7 +44,8 @@ class BoltApp extends StatelessWidget {
 }
 
 /// Vorläufiger Start-Screen (Platzhalter).
-/// Wird in einer späteren Phase durch das echte Hauptmenü ersetzt.
+/// Wird in einer späteren Phase durch das echte Hauptmenü ersetzt
+/// (mit Level/XP, "Sprint starten", letzte Läufe – siehe Mockup S. 9).
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -39,10 +59,17 @@ class HomeScreen extends StatelessWidget {
             Icon(Icons.bolt, size: 96, color: Colors.amber),
             Text(
               'B.O.L.T.',
-              style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: Colors.amber,
+              ),
             ),
             SizedBox(height: 8),
-            Text('Beat. Outrun. Level-up. Track.'),
+            Text(
+              'BREAK OLD LIMITS TODAY',
+              style: TextStyle(letterSpacing: 2),
+            ),
           ],
         ),
       ),
