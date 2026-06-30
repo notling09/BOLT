@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Standort-Berechtigungen fuer GPS (Phase 2: GPS-Grundlagen).
+         FINE  = praezises GPS (Meter-genau) - noetig fuer die Sprint-Zeitmessung.
+         COARSE = grobe Ortung (WLAN/Funkzelle); ab Android 12 noetig, damit der
+         System-Dialog die Wahl "Genau/Ungefaehr" sauber anzeigt. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <application
         android:label="bolt"
         android:name="${applicationName}"
