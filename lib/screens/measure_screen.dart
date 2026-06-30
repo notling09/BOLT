@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../services/location_service.dart';
 
@@ -58,8 +60,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   // --- Stabile Punkterfassung (warten, bis genau – dann mitteln) ---
 
-  /// Eine Messung zaehlt nur als "gut", wenn ihre Genauigkeit <= diesem Wert ist.
-  static const double _goodAccuracyMeters = 10.0;
+  /// Eine Messung gilt als "brauchbar", wenn ihre Genauigkeit <= diesem Wert ist.
+  /// Bewusst lockerer (mittel statt streng gut), weil der Schrittzaehler als
+  /// zweite, GPS-unabhaengige Quelle ein mittelmaessiges GPS auffaengt.
+  static const double _goodAccuracyMeters = 20.0;
 
   /// So viele GUTE Messungen sammeln und mitteln wir pro Punkt.
   static const int _requiredSamples = 5;
@@ -77,11 +81,52 @@ class _MeasureScreenState extends State<MeasureScreen> {
   StreamSubscription<Position>? _captureSub;
   Timer? _captureTimer;
 
+  // --- Pedometer (zweite, GPS-unabhaengige Messquelle) ---
+
+  /// Schrittlaenge in Metern – zur Laufzeit anpassbar (Default ~Gehen).
+  /// Spaeter koennte man sie ueber eine bekannte Strecke automatisch kalibrieren.
+  double _strideMeters = 0.70;
+
+  /// Abo des Schrittzaehler-Sensors.
+  StreamSubscription<StepCount>? _stepSub;
+
+  /// Letzter bekannter (kumulierter) Schrittzaehler-Stand seit Geraetestart.
+  int? _currentSteps;
+
+  /// Schrittzaehler-Stand beim Setzen des Startpunkts (Basislinie).
+  int? _stepBaseline;
+
+  /// Schritte vom Start bis zum Ziel (fuer die Anzeige im done-Schritt).
+  /// Die Distanz daraus wird live berechnet (_stepsWalked * _strideMeters),
+  /// damit eine geaenderte Schrittlaenge sofort wirkt.
+  int? _stepsWalked;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPedometer();
+  }
+
+  /// Fragt die Aktivitaets-Berechtigung an und abonniert den Schrittzaehler.
+  /// Schlaegt das fehl (kein Sensor / keine Erlaubnis), bleibt einfach GPS allein.
+  Future<void> _initPedometer() async {
+    final status = await Permission.activityRecognition.request();
+    if (!status.isGranted || !mounted) return;
+    _stepSub = Pedometer.stepCountStream.listen(
+      (event) {
+        if (!mounted) return;
+        _currentSteps = event.steps; // kumuliert seit Geraetestart
+      },
+      onError: (_) {/* Schrittzaehler nicht verfuegbar – still ignorieren */},
+    );
+  }
+
   @override
   void dispose() {
     _posSub?.cancel(); // GPS-Strom stoppen, sonst laeuft er im Hintergrund weiter.
     _captureSub?.cancel();
     _captureTimer?.cancel();
+    _stepSub?.cancel();
     _nameController.dispose();
     super.dispose();
   }
@@ -130,6 +175,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _distance = null;
       _liveDistance = 0; // Am Startpunkt sind es 0 m.
       _currentAccuracy = start.accuracy;
+      // Pedometer: Basislinie merken, ab hier zaehlen wir die Schritte.
+      _stepBaseline = _currentSteps;
+      _stepsWalked = null;
       _step = _Step.startSet;
     });
     _startLiveTracking(start); // ab jetzt live mitzaehlen
@@ -210,12 +258,23 @@ class _MeasureScreenState extends State<MeasureScreen> {
       end.longitude,
     );
 
+    // Zweite Quelle: nur die Schrittzahl merken – die Distanz daraus wird
+    // live berechnet, damit eine geaenderte Schrittlaenge sofort wirkt.
+    final baseline = _stepBaseline;
+    final nowSteps = _currentSteps;
+    int? stepsWalked;
+    if (baseline != null && nowSteps != null) {
+      stepsWalked = nowSteps - baseline;
+      if (stepsWalked < 0) stepsWalked = 0; // Sicherheit (Sensor-Reset o.ae.)
+    }
+
     setState(() {
       _isCapturing = false;
       _endPos = end;
       _distance = dist;
       _liveDistance = null; // Live-Wert nicht mehr relevant
       _currentAccuracy = end.accuracy; // gemittelte Genauigkeit der Ziel-Messung
+      _stepsWalked = stepsWalked;
       _step = _Step.done;
     });
   }
@@ -236,6 +295,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _currentAccuracy = null;
       _isCapturing = false;
       _captureCount = 0;
+      _stepBaseline = null;
+      _stepsWalked = null;
       _gpsError = null;
       _nameController.clear();
     });
@@ -352,6 +413,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
             ],
             const SizedBox(height: 24),
             _buildDistanzCard(),
+            if (_step == _Step.done) ...[
+              const SizedBox(height: 12),
+              _buildComparisonCard(),
+            ],
             const SizedBox(height: 16),
             _buildNameField(),
             if (_step == _Step.done) ...[
@@ -397,8 +462,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
           const SizedBox(height: 16),
           Text(
             _isCapturing
-                ? 'Warte auf gutes GPS-Signal…\n'
-                    '$_captureCount/$_requiredSamples gute Messungen'
+                ? 'Warte auf brauchbares GPS-Signal…\n'
+                    '$_captureCount/$_requiredSamples Messungen'
                 : text,
             textAlign: TextAlign.center,
           ),
@@ -632,6 +697,157 @@ class _MeasureScreenState extends State<MeasureScreen> {
         Text(
           'GPS-Genauigkeit: ±${acc.toStringAsFixed(0)} m ($quality)',
           style: TextStyle(color: color, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  /// Zeigt im done-Schritt GPS und Schritte einzeln + ein kombiniertes Total,
+  /// das nach GPS-Genauigkeit gewichtet ist (Sensor-Fusion).
+  Widget _buildComparisonCard() {
+    final gps = _distance;
+    final steps = _stepsWalked;
+    final stepDist = steps != null ? steps * _strideMeters : null;
+    final combined = _combinedDistance();
+    final gpsPct = (_gpsWeight(_currentAccuracy ?? 15) * 100).round();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'MESSMETHODEN',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _methodRow(
+            Icons.satellite_alt,
+            'GPS (Luftlinie)',
+            gps != null ? '${gps.toStringAsFixed(1)} m' : '—',
+          ),
+          const SizedBox(height: 8),
+          _methodRow(
+            Icons.directions_walk,
+            'Schritte',
+            stepDist != null
+                ? '${stepDist.toStringAsFixed(1)} m  ($steps Schr.)'
+                : 'nicht verfügbar',
+          ),
+          const Divider(height: 24, color: Colors.white12),
+          // Kombiniertes Total – gewichtet nach GPS-Genauigkeit.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'KOMBINIERT',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      stepDist != null
+                          ? 'GPS $gpsPct % · Schritte ${100 - gpsPct} %'
+                          : 'nur GPS (kein Schrittwert)',
+                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                combined != null ? '${combined.toStringAsFixed(1)} m' : '—',
+                style: const TextStyle(
+                  color: Colors.amber,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24, color: Colors.white12),
+          // Schrittlaenge anpassen (wirkt sofort auf Schritt- und Kombi-Wert).
+          Row(
+            children: [
+              const Icon(Icons.straighten, size: 16, color: Colors.white54),
+              const SizedBox(width: 8),
+              const Text('Schrittlänge', style: TextStyle(fontSize: 13)),
+              const Spacer(),
+              IconButton(
+                onPressed: () => _changeStride(-0.05),
+                icon: const Icon(Icons.remove_circle_outline, color: Colors.amber),
+                visualDensity: VisualDensity.compact,
+              ),
+              Text(
+                '${_strideMeters.toStringAsFixed(2)} m',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                onPressed: () => _changeStride(0.05),
+                icon: const Icon(Icons.add_circle_outline, color: Colors.amber),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Gewicht des GPS am kombinierten Wert (0..1), abhaengig von der Genauigkeit:
+  /// gutes GPS -> hohes Gewicht, schlechtes GPS -> mehr Vertrauen in die Schritte.
+  double _gpsWeight(double accuracy) {
+    if (accuracy <= 8) return 0.85;
+    if (accuracy >= 25) return 0.40;
+    final t = (accuracy - 8) / (25 - 8); // 0..1
+    return 0.85 - t * (0.85 - 0.40);
+  }
+
+  /// Kombiniert GPS- und Schritt-Distanz, gewichtet nach GPS-Genauigkeit.
+  double? _combinedDistance() {
+    final gps = _distance;
+    if (gps == null) return null;
+    final steps = _stepsWalked;
+    if (steps == null) return gps; // keine zweite Quelle -> nur GPS
+    final stepDist = steps * _strideMeters;
+    final w = _gpsWeight(_currentAccuracy ?? 15);
+    return w * gps + (1 - w) * stepDist;
+  }
+
+  void _changeStride(double delta) {
+    setState(() {
+      _strideMeters = (_strideMeters + delta).clamp(0.40, 2.00).toDouble();
+    });
+  }
+
+  Widget _methodRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.amber),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.amber,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
