@@ -100,11 +100,13 @@ class _RaceScreenState extends State<RaceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: _phase == _Phase.countdown
-              ? _buildCountdown()
-              : _buildRunning(),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: _phase == _Phase.countdown
+                ? _buildCountdown()
+                : _buildRunning(),
+          ),
         ),
       ),
     );
