@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -33,6 +35,14 @@ class _MeasureScreenState extends State<MeasureScreen> {
   Position? _endPos;
   double? _distance;
 
+  /// Live mitlaufende Luftlinie Start -> aktuelle Position (Variante A).
+  /// Nur waehrend des Messens (Step.startSet) aktiv.
+  double? _liveDistance;
+
+  /// Abo des GPS-Positions-Stroms. Muss beim Verlassen/Reset gekuendigt werden,
+  /// sonst laeuft das GPS im Hintergrund weiter (Akku!).
+  StreamSubscription<Position>? _posSub;
+
   /// Gesetzt, wenn ein GPS-Aufruf fehlschlug (serviceDisabled / permissionDenied…).
   LocationStatus? _gpsError;
 
@@ -41,6 +51,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   @override
   void dispose() {
+    _posSub?.cancel(); // GPS-Strom stoppen, sonst laeuft er im Hintergrund weiter.
     _nameController.dispose();
     super.dispose();
   }
@@ -59,20 +70,40 @@ class _MeasureScreenState extends State<MeasureScreen> {
     if (!mounted) return;
 
     if (result.isSuccess) {
+      final start = result.position!;
       setState(() {
-        _startPos = result.position;
+        _startPos = start;
         // Vorherige Zielmessung verwerfen, falls der Nutzer neu startet.
         _endPos = null;
         _distance = null;
+        _liveDistance = 0; // Am Startpunkt sind es 0 m.
         _step = _Step.startSet;
         _isLoading = false;
       });
+      _startLiveTracking(start); // ab jetzt live mitzaehlen
     } else {
       setState(() {
         _gpsError = result.status;
         _isLoading = false;
       });
     }
+  }
+
+  /// Startet das Live-Mitzaehlen: abonniert den Positions-Strom und berechnet
+  /// bei JEDER neuen Position die Luftlinie vom Startpunkt zur aktuellen
+  /// Position. Das ist der Kern von Variante A.
+  void _startLiveTracking(Position start) {
+    _posSub?.cancel(); // evtl. altes Abo zuerst beenden
+    _posSub = _locationService.positionStream().listen((pos) {
+      if (!mounted) return;
+      final d = Geolocator.distanceBetween(
+        start.latitude,
+        start.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+      setState(() => _liveDistance = d);
+    });
   }
 
   Future<void> _setEnd() async {
@@ -90,6 +121,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
     if (!mounted) return;
 
     if (result.isSuccess) {
+      // Live-Mitzaehlen stoppen – ab jetzt ist die Distanz eingefroren.
+      _posSub?.cancel();
+      _posSub = null;
+
       // position ist garantiert non-null wenn isSuccess == true.
       final end = result.position!;
       // Haversine-Distanz zwischen zwei GPS-Punkten in Metern.
@@ -103,6 +138,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       setState(() {
         _endPos = end;
         _distance = dist;
+        _liveDistance = null; // Live-Wert nicht mehr relevant
         _step = _Step.done;
         _isLoading = false;
       });
@@ -115,11 +151,14 @@ class _MeasureScreenState extends State<MeasureScreen> {
   }
 
   void _reset() {
+    _posSub?.cancel(); // laufendes Live-Abo beenden
+    _posSub = null;
     setState(() {
       _step = _Step.idle;
       _startPos = null;
       _endPos = null;
       _distance = null;
+      _liveDistance = null;
       _gpsError = null;
       _nameController.clear();
     });
@@ -330,8 +369,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   /// Zeigt die berechnete Distanz (oder "— m" wenn noch nicht gemessen).
   Widget _buildDistanzCard() {
-    final dist = _distance;
-    final tooShort = dist != null && dist < _minDistanceMeters;
+    // Waehrend des Messens (startSet) zeigen wir die LIVE-Distanz,
+    // nach dem Ziel (done) die eingefrorene Mess-Distanz.
+    final bool isLive = _step == _Step.startSet;
+    final double? dist = isLive ? _liveDistance : _distance;
+    // Die "zu kurz"-Warnung ist nur am Ende sinnvoll, nicht waehrend man laeuft.
+    final tooShort = !isLive && dist != null && dist < _minDistanceMeters;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -342,9 +385,21 @@ class _MeasureScreenState extends State<MeasureScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'DISTANZ',
-            style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2),
+          Row(
+            children: [
+              Text(
+                isLive ? 'LIVE-DISTANZ' : 'DISTANZ',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              if (isLive) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.circle, color: Colors.redAccent, size: 10),
+              ],
+            ],
           ),
           const SizedBox(height: 4),
           Text(
@@ -362,6 +417,14 @@ class _MeasureScreenState extends State<MeasureScreen> {
                 'Strecke zu kurz – wahrscheinlich GPS-Rauschen (±3–5 m).\n'
                 'Bitte Start und Ziel weiter auseinandersetzen.',
                 style: TextStyle(color: Colors.orange, fontSize: 12),
+              ),
+            )
+          else if (isLive)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Geh zum Ziel – die Distanz zählt live mit.',
+                style: TextStyle(color: Colors.white38, fontSize: 11),
               ),
             )
           else if (dist != null)
