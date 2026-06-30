@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../models/player.dart';
+import '../models/run.dart';
 import '../models/track.dart';
+import '../services/database_service.dart';
+import '../services/game_service.dart';
 import '../services/location_service.dart';
 import '../services/timer_service.dart';
 
@@ -33,6 +37,8 @@ class RaceScreen extends StatefulWidget {
 class _RaceScreenState extends State<RaceScreen> {
   final TimerService _timerService = TimerService();
   final LocationService _locationService = LocationService();
+  final DatabaseService _db = DatabaseService.instance;
+  final GameService _gameService = GameService();
 
   /// Live-Abo der GPS-Positionen während des Laufs.
   StreamSubscription<Position>? _positionSub;
@@ -46,6 +52,11 @@ class _RaceScreenState extends State<RaceScreen> {
   int _elapsedMs = 0;
   int _finalMs = 0;
   double? _distanceToTarget; // aktuelle Distanz zum Ziel (Live-Feedback)
+
+  /// Ergebnis nach _finish(): XP, Bestzeit-Flag, aktualisierter Player.
+  int _earnedXp = 0;
+  bool _isNewBest = false;
+  Player? _updatedPlayer;
 
   /// Gesetzt bei GPS-Problemen → freundlicher Hinweis statt Absturz.
   String? _errorMessage;
@@ -139,16 +150,62 @@ class _RaceScreenState extends State<RaceScreen> {
     }
   }
 
-  /// Ziel erreicht: alles stoppen, finale Zeit sichern, Ergebnis zeigen.
+  /// Ziel erreicht: Zeit stoppen, Lauf + XP speichern, Ergebnis zeigen.
+  ///
+  /// Nur wenn der Track eine echte DB-id hat (wurde über measure_screen
+  /// gespeichert), wird auch ein Run-Eintrag angelegt. Bei der Dummy-Strecke
+  /// (id == null, z. B. direkter Start ohne Speichern) wird nichts persistiert.
   void _finish() {
     _timerService.stopStopwatch();
     _displayTicker?.cancel();
     _positionSub?.cancel();
     HapticFeedback.heavyImpact();
 
+    final ms = _timerService.elapsedMs;
     setState(() {
-      _finalMs = _timerService.elapsedMs;
+      _finalMs = ms;
       _phase = _Phase.finished;
+    });
+
+    // Asynchron speichern – UI ist bereits auf "finished" gesetzt.
+    _saveResult(ms);
+  }
+
+  Future<void> _saveResult(int durationMs) async {
+    final trackId = widget.track.id;
+    // Nur speichern, wenn die Strecke eine echte DB-id hat.
+    if (trackId == null) return;
+
+    // Bisherige Bestzeit laden, um Bestzeit-Bonus zu prüfen.
+    final prevBest = await _db.getBestRunForTrack(trackId);
+    final isNewBest =
+        prevBest == null || durationMs < prevBest.durationMs;
+
+    // Lauf in sqflite speichern.
+    await _db.insertRun(Run(
+      trackId: trackId,
+      durationMs: durationMs,
+      date: DateTime.now(),
+    ));
+
+    // XP berechnen und Player aktualisieren.
+    final player = await _gameService.awardXp(
+      distanceMeters: widget.track.distanceMeters,
+      durationMs: durationMs,
+      isNewBest: isNewBest,
+    );
+
+    final earned = _gameService.calculateXp(
+      distanceMeters: widget.track.distanceMeters,
+      durationMs: durationMs,
+      isNewBest: isNewBest,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _earnedXp = earned;
+      _isNewBest = isNewBest;
+      _updatedPlayer = player;
     });
   }
 
@@ -346,8 +403,9 @@ class _RaceScreenState extends State<RaceScreen> {
     );
   }
 
-  /// Phase 3: Ziel erreicht – Ergebnis.
+  /// Phase 3: Ziel erreicht – Ergebnis mit XP-Anzeige.
   Widget _buildFinished() {
+    final player = _updatedPlayer;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -377,7 +435,51 @@ class _RaceScreenState extends State<RaceScreen> {
           '${widget.track.name} · ${widget.track.distanceMeters.toStringAsFixed(0)} m',
           style: const TextStyle(color: Colors.white38, fontSize: 13),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 16),
+        // XP + Bestzeit-Anzeige (nur wenn Strecke eine echte id hatte).
+        if (player != null) ...[
+          if (_isNewBest)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                  SizedBox(width: 6),
+                  Text(
+                    'NEUE BESTZEIT!',
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.bolt, color: Colors.amber, size: 18),
+                const SizedBox(width: 4),
+                Text(
+                  '+$_earnedXp XP  ·  Level ${player.level}',
+                  style: const TextStyle(
+                    color: Colors.amber,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 32),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -388,7 +490,8 @@ class _RaceScreenState extends State<RaceScreen> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.amber,
                 side: const BorderSide(color: Colors.amber),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 14),
               ),
             ),
             const SizedBox(width: 16),
@@ -399,7 +502,8 @@ class _RaceScreenState extends State<RaceScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber,
                 foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 14),
               ),
             ),
           ],

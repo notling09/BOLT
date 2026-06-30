@@ -30,4 +30,25 @@ class Track {
     required this.endLng,
     required this.distanceMeters,
   });
+
+  /// Für sqflite INSERT: id weglassen (wird von der DB vergeben).
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'startLat': startLat,
+        'startLng': startLng,
+        'endLat': endLat,
+        'endLng': endLng,
+        'distanceMeters': distanceMeters,
+      };
+
+  /// Aus einer sqflite-Zeile (SELECT) ein Track-Objekt bauen.
+  factory Track.fromMap(Map<String, dynamic> map) => Track(
+        id: map['id'] as int?,
+        name: map['name'] as String,
+        startLat: map['startLat'] as double,
+        startLng: map['startLng'] as double,
+        endLat: map['endLat'] as double,
+        endLng: map['endLng'] as double,
+        distanceMeters: map['distanceMeters'] as double,
+      );
 }
