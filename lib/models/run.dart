@@ -7,7 +7,6 @@ class Run {
   final int? id;
 
   /// Verweis auf die Strecke, zu der dieser Lauf gehört (Track.id).
-  /// So wissen wir, welcher Lauf zu welcher Strecke zählt.
   final int trackId;
 
   /// Gemessene Zeit in **Millisekunden**.
@@ -27,4 +26,19 @@ class Run {
     required this.durationMs,
     required this.date,
   });
+
+  /// Für sqflite INSERT: DateTime als int (ms seit Epoch), id weglassen.
+  Map<String, dynamic> toMap() => {
+        'trackId': trackId,
+        'durationMs': durationMs,
+        'date': date.millisecondsSinceEpoch,
+      };
+
+  /// Aus einer sqflite-Zeile ein Run-Objekt bauen.
+  factory Run.fromMap(Map<String, dynamic> map) => Run(
+        id: map['id'] as int?,
+        trackId: map['trackId'] as int,
+        durationMs: map['durationMs'] as int,
+        date: DateTime.fromMillisecondsSinceEpoch(map['date'] as int),
+      );
 }

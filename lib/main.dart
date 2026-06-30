@@ -1,30 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'models/track.dart';
 import 'screens/gps_test_screen.dart';
 import 'screens/measure_screen.dart';
-import 'screens/race_screen.dart';
+import 'screens/stats_screen.dart';
+import 'screens/track_list_screen.dart';
 
 /// Einstiegspunkt der App.
-///
-/// `async`, weil wir VOR dem Start zwei Systemeinstellungen setzen müssen.
 Future<void> main() async {
-  // Stellt sicher, dass das Flutter-Framework bereit ist, bevor wir
-  // SystemChrome (Systemeinstellungen wie Bildschirm-Ausrichtung) anfassen.
   WidgetsFlutterBinding.ensureInitialized();
 
   // Konzept S. 11: BOLT ist nur fürs Hochformat (Portrait) gedacht.
-  // Wir sperren die App auf "portraitUp" – kein Querformat.
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(const BoltApp());
 }
 
 /// Wurzel-Widget der gesamten App.
-/// Stateless, weil sich hier (noch) nichts dynamisch ändert.
 class BoltApp extends StatelessWidget {
   const BoltApp({super.key});
 
@@ -33,7 +25,6 @@ class BoltApp extends StatelessWidget {
     return MaterialApp(
       title: 'BOLT',
       debugShowCheckedModeBanner: false,
-      // Dark Theme mit gelbem Akzent – passend zu den Mockups (Konzept S. 9–10).
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: Colors.black,
@@ -48,9 +39,7 @@ class BoltApp extends StatelessWidget {
   }
 }
 
-/// Vorläufiger Start-Screen (Platzhalter).
-/// Wird in einer späteren Phase durch das echte Hauptmenü ersetzt
-/// (mit Level/XP, "Sprint starten", letzte Läufe – siehe Mockup S. 9).
+/// Vorläufiger HomeScreen – wird in Phase 7 durch das Mockup-Hauptmenü ersetzt.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -76,67 +65,55 @@ class HomeScreen extends StatelessWidget {
               style: TextStyle(letterSpacing: 2),
             ),
             const SizedBox(height: 32),
-            // Phase 2: Zugang zum GPS-Test-Screen (vorläufig, bis das echte
-            // Hauptmenü mit Bottom-Navigation gebaut ist).
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const GpsTestScreen(),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                foregroundColor: Colors.black,
-              ),
-              icon: const Icon(Icons.my_location),
-              label: const Text('GPS testen'),
+            _btn(
+              context,
+              icon: Icons.straighten,
+              label: 'Strecke vermessen',
+              screen: const MeasureScreen(),
             ),
             const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const MeasureScreen(),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                foregroundColor: Colors.black,
-              ),
-              icon: const Icon(Icons.straighten),
-              label: const Text('Strecke vermessen'),
+            _btn(
+              context,
+              icon: Icons.play_arrow,
+              label: 'Sprint starten',
+              screen: const TrackListScreen(),
             ),
             const SizedBox(height: 12),
-            // Phase 4: Sprint mit Timer-Logik. Vorerst mit einer Dummy-Strecke,
-            // da Strecken noch nicht persistiert werden (kommt in Phase 6).
-            ElevatedButton.icon(
-              onPressed: () {
-                const dummyTrack = Track(
-                  name: 'Testlauf',
-                  startLat: 0,
-                  startLng: 0,
-                  endLat: 0,
-                  endLng: 0,
-                  distanceMeters: 100,
-                );
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const RaceScreen(track: dummyTrack),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                foregroundColor: Colors.black,
-              ),
-              icon: const Icon(Icons.timer),
-              label: const Text('Sprint starten'),
+            _btn(
+              context,
+              icon: Icons.bar_chart,
+              label: 'Statistik',
+              screen: const StatsScreen(),
+            ),
+            const SizedBox(height: 12),
+            _btn(
+              context,
+              icon: Icons.my_location,
+              label: 'GPS testen',
+              screen: const GpsTestScreen(),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _btn(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Widget screen,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => screen),
+      ),
+      icon: Icon(icon),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.amber,
+        foregroundColor: Colors.black,
+        minimumSize: const Size(220, 48),
       ),
     );
   }

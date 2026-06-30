@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/track.dart';
+import '../services/database_service.dart';
 import '../services/location_service.dart';
 import 'race_screen.dart';
 
@@ -12,11 +13,11 @@ enum _Step {
   done,     // beide Punkte gesetzt, Distanz berechnet
 }
 
-/// Screen "Strecke vermessen" – Phase 3 (UC1).
+/// Screen "Strecke vermessen" – Phase 3 (UC1) + Phase 6 (Persistenz).
 ///
-/// Erfasst Start- und Zielpunkt per GPS und berechnet die Distanz mit
-/// [Geolocator.distanceBetween]. Kein sqflite – das Track-Objekt lebt nur
-/// im RAM bis der Screen verlassen wird (Persistenz kommt in Phase 6).
+/// Ablauf: Start setzen → Ziel setzen → Distanz anzeigen → SPEICHERN → Sprint.
+/// Die Strecke wird mit [DatabaseService.insertTrack] gespeichert und bekommt
+/// dabei eine id, die der RaceScreen für das Speichern des Laufs braucht.
 class MeasureScreen extends StatefulWidget {
   const MeasureScreen({super.key});
 
@@ -26,19 +27,23 @@ class MeasureScreen extends StatefulWidget {
 
 class _MeasureScreenState extends State<MeasureScreen> {
   final _locationService = LocationService();
+  final _db = DatabaseService.instance;
   final _nameController = TextEditingController();
 
   _Step _step = _Step.idle;
   bool _isLoading = false;
+  bool _isSaving = false;
 
   Position? _startPos;
   Position? _endPos;
   double? _distance;
 
-  /// Gesetzt, wenn ein GPS-Aufruf fehlschlug (serviceDisabled / permissionDenied…).
+  /// Gesetzt nach erfolgreichem INSERT – enthält dann eine echte DB-id.
+  Track? _savedTrack;
+
+  /// Gesetzt, wenn ein GPS-Aufruf fehlschlug.
   LocationStatus? _gpsError;
 
-  /// Unter dieser Distanz warnen wir vor GPS-Rauschen (±3–5 m Ungenauigkeit).
   static const double _minDistanceMeters = 10.0;
 
   @override
@@ -63,9 +68,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
     if (result.isSuccess) {
       setState(() {
         _startPos = result.position;
-        // Vorherige Zielmessung verwerfen, falls der Nutzer neu startet.
         _endPos = null;
         _distance = null;
+        _savedTrack = null;
         _step = _Step.startSet;
         _isLoading = false;
       });
@@ -78,8 +83,6 @@ class _MeasureScreenState extends State<MeasureScreen> {
   }
 
   Future<void> _setEnd() async {
-    // Lokale Kopie vor dem await – Dart Flow Analysis verliert die Null-Garantie
-    // auf Klassen-Felder über async-Grenzen hinweg.
     final start = _startPos;
     if (start == null) return;
 
@@ -92,9 +95,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     if (!mounted) return;
 
     if (result.isSuccess) {
-      // position ist garantiert non-null wenn isSuccess == true.
       final end = result.position!;
-      // Haversine-Distanz zwischen zwei GPS-Punkten in Metern.
       final dist = Geolocator.distanceBetween(
         start.latitude,
         start.longitude,
@@ -105,6 +106,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       setState(() {
         _endPos = end;
         _distance = dist;
+        _savedTrack = null; // neue Messung → alten Save verwerfen
         _step = _Step.done;
         _isLoading = false;
       });
@@ -116,17 +118,21 @@ class _MeasureScreenState extends State<MeasureScreen> {
     }
   }
 
-  /// Baut aus der gerade vermessenen Strecke einen Track und startet den Sprint.
-  /// (Noch ohne Persistenz – der Track lebt nur für diesen Lauf.)
-  void _startSprint() {
+  /// Strecke in sqflite speichern und Track mit echter id zurückbekommen.
+  Future<Track?> _saveTrack() async {
     final start = _startPos;
     final end = _endPos;
     final dist = _distance;
-    if (start == null || end == null || dist == null) return;
+    if (start == null || end == null || dist == null) return null;
+
+    // Bereits gespeichert? Nicht doppelt einfügen.
+    if (_savedTrack != null) return _savedTrack;
+
+    setState(() => _isSaving = true);
 
     final name = _nameController.text.trim();
     final track = Track(
-      name: name.isEmpty ? 'Strecke' : name,
+      name: name.isEmpty ? 'Meine Strecke' : name,
       startLat: start.latitude,
       startLng: start.longitude,
       endLat: end.latitude,
@@ -134,8 +140,41 @@ class _MeasureScreenState extends State<MeasureScreen> {
       distanceMeters: dist,
     );
 
+    final saved = await _db.insertTrack(track);
+    if (!mounted) return null;
+
+    setState(() {
+      _savedTrack = saved;
+      _isSaving = false;
+    });
+    return saved;
+  }
+
+  /// Speichern (falls nötig) und direkt zum RaceScreen.
+  Future<void> _saveAndSprint() async {
+    final track = await _saveTrack();
+    if (!mounted || track == null) return;
+
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => RaceScreen(track: track)),
+    );
+  }
+
+  /// Nur speichern, dann SnackBar zeigen.
+  Future<void> _saveOnly() async {
+    final track = await _saveTrack();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          track != null
+              ? '«${track.name}» gespeichert!'
+              : 'Fehler beim Speichern.',
+        ),
+        backgroundColor: track != null ? Colors.green[800] : Colors.red[800],
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -145,6 +184,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _startPos = null;
       _endPos = null;
       _distance = null;
+      _savedTrack = null;
       _gpsError = null;
       _nameController.clear();
     });
@@ -188,27 +228,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
             _buildNameField(),
             if (_step == _Step.done) ...[
               const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _startSprint,
-                icon: const Icon(Icons.timer),
-                label: const Text('DIESE STRECKE SPRINTEN'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _reset,
-                icon: const Icon(Icons.refresh),
-                label: const Text('NEU MESSEN'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.amber,
-                  side: const BorderSide(color: Colors.amber),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
+              _buildSaveButtons(),
             ],
           ],
         ),
@@ -216,11 +236,13 @@ class _MeasureScreenState extends State<MeasureScreen> {
     );
   }
 
-  /// Zentrale Statuskarte: Icon, Beschreibungstext, Koordinaten.
   Widget _buildStatusCard() {
     final (IconData icon, String text) = switch (_step) {
       _Step.idle => (Icons.place_outlined, 'Start- und Zielpunkt setzen'),
-      _Step.startSet => (Icons.flag_outlined, 'Startpunkt gesetzt\nJetzt zum Ziel gehen und Zielpunkt setzen'),
+      _Step.startSet => (
+        Icons.flag_outlined,
+        'Startpunkt gesetzt\nJetzt zum Ziel gehen und Zielpunkt setzen',
+      ),
       _Step.done => (Icons.check_circle_outline, 'Vermessung abgeschlossen'),
     };
 
@@ -247,6 +269,20 @@ class _MeasureScreenState extends State<MeasureScreen> {
             const SizedBox(height: 6),
             _coordRow('Ziel', _endPos!),
           ],
+          if (_savedTrack != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.check, color: Colors.green, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  'Gespeichert als «${_savedTrack!.name}»',
+                  style: const TextStyle(color: Colors.green, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -267,16 +303,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
     );
   }
 
-  /// Zwei Aktions-Buttons nebeneinander: STARTPUNKT SETZEN | ZIELPUNKT SETZEN.
   Widget _buildActionButtons() {
-    final startActive = !_isLoading;
-    final endActive = !_isLoading && _step != _Step.idle;
-
     return Row(
       children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: startActive ? _setStart : null,
+            onPressed: _isLoading ? null : _setStart,
             icon: const Icon(Icons.my_location, size: 18),
             label: const Text(
               'STARTPUNKT\nSETZEN',
@@ -284,8 +316,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
               style: TextStyle(fontSize: 12),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _step == _Step.idle ? Colors.amber : Colors.grey[800],
-              foregroundColor: _step == _Step.idle ? Colors.black : Colors.white70,
+              backgroundColor:
+                  _step == _Step.idle ? Colors.amber : Colors.grey[800],
+              foregroundColor:
+                  _step == _Step.idle ? Colors.black : Colors.white70,
               disabledBackgroundColor: Colors.grey[850],
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -294,7 +328,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: endActive ? _setEnd : null,
+            onPressed: (_isLoading || _step == _Step.idle) ? null : _setEnd,
             icon: const Icon(Icons.flag, size: 18),
             label: const Text(
               'ZIELPUNKT\nSETZEN',
@@ -302,8 +336,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
               style: TextStyle(fontSize: 12),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _step == _Step.startSet ? Colors.amber : Colors.grey[800],
-              foregroundColor: _step == _Step.startSet ? Colors.black : Colors.white70,
+              backgroundColor:
+                  _step == _Step.startSet ? Colors.amber : Colors.grey[800],
+              foregroundColor:
+                  _step == _Step.startSet ? Colors.black : Colors.white70,
               disabledBackgroundColor: Colors.grey[850],
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -313,7 +349,6 @@ class _MeasureScreenState extends State<MeasureScreen> {
     );
   }
 
-  /// Roter Hinweis-Block, wenn GPS nicht verfügbar / keine Berechtigung.
   Widget _buildErrorCard() {
     final (String msg, bool showSettingsButton) = switch (_gpsError) {
       LocationStatus.serviceDisabled => (
@@ -346,9 +381,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
             children: [
               const Icon(Icons.warning_amber, color: Colors.amber, size: 18),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(msg, style: const TextStyle(fontSize: 13)),
-              ),
+              Expanded(child: Text(msg, style: const TextStyle(fontSize: 13))),
             ],
           ),
           if (showSettingsButton)
@@ -364,7 +397,6 @@ class _MeasureScreenState extends State<MeasureScreen> {
     );
   }
 
-  /// Zeigt die berechnete Distanz (oder "— m" wenn noch nicht gemessen).
   Widget _buildDistanzCard() {
     final dist = _distance;
     final tooShort = dist != null && dist < _minDistanceMeters;
@@ -380,7 +412,11 @@ class _MeasureScreenState extends State<MeasureScreen> {
         children: [
           const Text(
             'DISTANZ',
-            style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2),
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              letterSpacing: 1.2,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -413,7 +449,6 @@ class _MeasureScreenState extends State<MeasureScreen> {
     );
   }
 
-  /// Optionales Textfeld für den Streckennamen (fliessen in Track.name ein).
   Widget _buildNameField() {
     return TextField(
       controller: _nameController,
@@ -444,6 +479,57 @@ class _MeasureScreenState extends State<MeasureScreen> {
         ),
       ),
       style: const TextStyle(color: Colors.white),
+    );
+  }
+
+  Widget _buildSaveButtons() {
+    final busy = _isSaving || _isLoading;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton.icon(
+          onPressed: busy ? null : _saveAndSprint,
+          icon: busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.black,
+                  ),
+                )
+              : const Icon(Icons.timer),
+          label: const Text('SPEICHERN & SPRINTEN'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.amber,
+            foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: (busy || _savedTrack != null) ? null : _saveOnly,
+          icon: const Icon(Icons.save_outlined),
+          label: Text(_savedTrack != null ? 'GESPEICHERT' : 'NUR SPEICHERN'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.amber,
+            side: const BorderSide(color: Colors.amber),
+            disabledForegroundColor: Colors.white30,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: busy ? null : _reset,
+          icon: const Icon(Icons.refresh),
+          label: const Text('NEU MESSEN'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white54,
+            side: const BorderSide(color: Colors.white24),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ],
     );
   }
 }
