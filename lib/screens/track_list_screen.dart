@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/track.dart';
 import '../services/database_service.dart';
+import 'measure_screen.dart';
 import 'race_screen.dart';
 
 /// Zeigt alle gespeicherten Strecken an (US6: Strecke speichern / wählen).
@@ -48,6 +49,14 @@ class _TrackListScreenState extends State<TrackListScreen> {
     );
   }
 
+  /// Zum Vermessen-Screen wechseln; nach Rückkehr Streckenliste neu laden.
+  Future<void> _openMeasure() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MeasureScreen()),
+    );
+    await _loadTracks();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -87,7 +96,7 @@ class _TrackListScreenState extends State<TrackListScreen> {
       return _buildCentered(
         icon: Icons.place_outlined,
         text: 'Noch keine Strecken gespeichert.\nMesse zuerst eine Strecke!',
-        button: ('Strecke vermessen', () => Navigator.of(context).pop()),
+        button: ('Strecke vermessen', _openMeasure),
       );
     }
 
