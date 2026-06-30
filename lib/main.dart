@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'screens/gps_test_screen.dart';
+
 /// Einstiegspunkt der App.
 ///
 /// `async`, weil wir VOR dem Start zwei Systemeinstellungen setzen müssen.
@@ -55,9 +57,9 @@ class HomeScreen extends StatelessWidget {
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.bolt, size: 96, color: Colors.amber),
-            Text(
+          children: [
+            const Icon(Icons.bolt, size: 96, color: Colors.amber),
+            const Text(
               'B.O.L.T.',
               style: TextStyle(
                 fontSize: 40,
@@ -65,10 +67,28 @@ class HomeScreen extends StatelessWidget {
                 color: Colors.amber,
               ),
             ),
-            SizedBox(height: 8),
-            Text(
+            const SizedBox(height: 8),
+            const Text(
               'BREAK OLD LIMITS TODAY',
               style: TextStyle(letterSpacing: 2),
+            ),
+            const SizedBox(height: 32),
+            // Phase 2: Zugang zum GPS-Test-Screen (vorläufig, bis das echte
+            // Hauptmenü mit Bottom-Navigation gebaut ist).
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const GpsTestScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.my_location),
+              label: const Text('GPS testen'),
             ),
           ],
         ),
