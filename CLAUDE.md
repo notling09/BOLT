@@ -52,6 +52,12 @@ Codebasis ab und bietet starke UI-Möglichkeiten für die Gamification-Animation
 (benötigt einen Mac mit Xcode). Web/Desktop sind **nicht** Ziel – können in der
 Projektkonfiguration deaktiviert werden.
 
+**UI-Vorgaben (aus dem Konzept-PDF):**
+- **Nur Hochformat (Portrait)**, nur Smartphone – kein Tablet/Querformat (Konzept Kap. 5.5).
+  Im Code per `SystemChrome.setPreferredOrientations` auf `portraitUp` gesperrt.
+- **Dark Theme mit gelbem Akzent** (schwarzer Hintergrund, Amber-Buttons, fette/kursive Schrift) – Mockups Kap. 5.
+- **Bottom-Navigation mit 3 Tabs:** `Home` · `Sprint` · `Statistik`.
+
 ---
 
 ## 4. Datenhaltung & Backend
@@ -101,7 +107,19 @@ Eine Phase nach der anderen – nicht alles auf einmal.
 7. **UI-Politur:** Level-up-Animationen, Design.
 8. **iOS-Test:** sofern ein Mac verfügbar ist.
 
-**Aktueller Stand:** Phase 1 (frisches, leeres Flutter-Projekt mit Standard-Counter-Demo).
+**Aktueller Stand:** Phase 1 abgeschlossen. Fundament im Aufbau auf Branch
+`feature/fundament`: `main.dart` aufgeräumt (Dark Theme + Portrait-Lock),
+Datenmodelle `Track`, `Run`, `Player` in `lib/models/` angelegt (reine
+Datenklassen, sqflite-Serialisierung folgt in der Persistenz-Phase).
+
+**Datenmodell (Kap. 7):**
+- `Track` (Strecke): Name, Start-/Ziel-Koordinaten, Distanz in Metern → sqflite
+- `Run` (Lauf): `trackId`, Zeit in **Millisekunden**, Datum → sqflite
+- `Player`: XP, Level → shared_preferences (Single-User)
+- *Bestzeit* ist kein eigenes Modell, sondern wird aus `Run` berechnet (min. Zeit pro Strecke).
+
+**Git-Workflow:** Feature-Branches + Merge Requests (Team: Michael, Nilton, Thierry).
+Remote: GitLab (origin). Normaler Ablauf: `git add .` → `git commit -m "..."` → `git push`.
 
 ---
 
