@@ -109,4 +109,28 @@ class DatabaseService {
     final runs = await getRunsForTrack(trackId);
     return runs.isEmpty ? null : runs.first;
   }
+
+  /// Die letzten Läufe über ALLE Strecken (neueste zuerst), inkl. Streckenname
+  /// und Distanz – per JOIN, damit das Hauptmenü "Letzte Läufe" zeigen kann.
+  Future<List<({Run run, String trackName, double distanceMeters})>>
+      getRecentRuns({int limit = 5}) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT runs.id, runs.trackId, runs.durationMs, runs.date,
+             tracks.name AS trackName,
+             tracks.distanceMeters AS trackDistance
+      FROM runs
+      JOIN tracks ON runs.trackId = tracks.id
+      ORDER BY runs.date DESC
+      LIMIT ?
+    ''', [limit]);
+
+    return rows
+        .map((row) => (
+              run: Run.fromMap(row),
+              trackName: row['trackName'] as String,
+              distanceMeters: row['trackDistance'] as double,
+            ))
+        .toList();
+  }
 }

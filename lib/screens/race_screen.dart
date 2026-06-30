@@ -34,11 +34,17 @@ class RaceScreen extends StatefulWidget {
   State<RaceScreen> createState() => _RaceScreenState();
 }
 
-class _RaceScreenState extends State<RaceScreen> {
+class _RaceScreenState extends State<RaceScreen>
+    with SingleTickerProviderStateMixin {
   final TimerService _timerService = TimerService();
   final LocationService _locationService = LocationService();
   final DatabaseService _db = DatabaseService.instance;
   final GameService _gameService = GameService();
+
+  /// Steuert die Level-up-"Pop"-Animation (Skalierung des Badges).
+  late final AnimationController _levelUpController;
+  late final Animation<double> _levelUpScale;
+  bool _leveledUp = false;
 
   /// Live-Abo der GPS-Positionen während des Laufs.
   StreamSubscription<Position>? _positionSub;
@@ -69,11 +75,22 @@ class _RaceScreenState extends State<RaceScreen> {
   @override
   void initState() {
     super.initState();
+    // 600ms "Pop": elasticOut lässt das Badge kurz über die Endgrösse
+    // hinausschiessen und zurückfedern – wirkt wie ein kleiner Triumph.
+    _levelUpController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _levelUpScale = CurvedAnimation(
+      parent: _levelUpController,
+      curve: Curves.elasticOut,
+    );
     _prepare();
   }
 
   @override
   void dispose() {
+    _levelUpController.dispose();
     _displayTicker?.cancel();
     _positionSub?.cancel();
     _timerService.dispose();
@@ -188,6 +205,9 @@ class _RaceScreenState extends State<RaceScreen> {
       date: DateTime.now(),
     ));
 
+    // Level VOR der XP-Gutschrift merken, um ein Level-up zu erkennen.
+    final before = await _gameService.loadPlayer();
+
     // XP berechnen und Player aktualisieren.
     final player = await _gameService.awardXp(
       distanceMeters: widget.track.distanceMeters,
@@ -201,12 +221,21 @@ class _RaceScreenState extends State<RaceScreen> {
       isNewBest: isNewBest,
     );
 
+    final leveledUp = player.level > before.level;
+
     if (!mounted) return;
     setState(() {
       _earnedXp = earned;
       _isNewBest = isNewBest;
       _updatedPlayer = player;
+      _leveledUp = leveledUp;
     });
+
+    // Feier-Animation starten, wenn ein Level-up passiert ist.
+    if (leveledUp) {
+      HapticFeedback.heavyImpact();
+      _levelUpController.forward(from: 0);
+    }
   }
 
   /// GPS-Signal während des Laufs verloren → Lauf ungültig.
@@ -455,6 +484,44 @@ class _RaceScreenState extends State<RaceScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          // Level-up-Feier: "Pop"-Animation (elasticOut, siehe initState).
+          if (_leveledUp)
+            ScaleTransition(
+              scale: _levelUpScale,
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.amber,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withValues(alpha: 0.6),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.arrow_circle_up,
+                        color: Colors.black, size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      'LEVEL UP!  LV.${player.level}',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           Container(
