@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'models/track.dart';
 import 'screens/gps_test_screen.dart';
 import 'screens/measure_screen.dart';
+import 'screens/race_screen.dart';
 
 /// Einstiegspunkt der App.
 ///
@@ -106,6 +108,32 @@ class HomeScreen extends StatelessWidget {
               ),
               icon: const Icon(Icons.straighten),
               label: const Text('Strecke vermessen'),
+            ),
+            const SizedBox(height: 12),
+            // Phase 4: Sprint mit Timer-Logik. Vorerst mit einer Dummy-Strecke,
+            // da Strecken noch nicht persistiert werden (kommt in Phase 6).
+            ElevatedButton.icon(
+              onPressed: () {
+                const dummyTrack = Track(
+                  name: 'Testlauf',
+                  startLat: 0,
+                  startLng: 0,
+                  endLat: 0,
+                  endLng: 0,
+                  distanceMeters: 100,
+                );
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const RaceScreen(track: dummyTrack),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.timer),
+              label: const Text('Sprint starten'),
             ),
           ],
         ),
