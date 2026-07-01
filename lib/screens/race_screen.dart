@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../models/player.dart';
 import '../models/run.dart';
@@ -40,6 +42,22 @@ class _RaceScreenState extends State<RaceScreen>
   final LocationService _locationService = LocationService();
   final DatabaseService _db = DatabaseService.instance;
   final GameService _gameService = GameService();
+
+  /// Spielt das Beep-Startsignal (Asset assets/sounds/beep.wav).
+  final AudioPlayer _beepPlayer = AudioPlayer();
+
+  /// Spielt den Level-up-Sound am Ende (Asset assets/sounds/levelup.wav).
+  final AudioPlayer _levelUpPlayer = AudioPlayer();
+
+  /// True für Fix-Strecken (Vorgaben ohne echte Zielkoordinaten) → beim
+  /// Sprinten wird distanz-basiert gestoppt statt per Zielradius.
+  bool get _isDistanceMode => widget.track.isTemplate;
+
+  /// Distanz-Modus: Startreferenz (erster GPS-Fix nach dem Start).
+  Position? _distStart;
+
+  /// Fehler mit "Erneut versuchen"-Aktion (z. B. Lautstärke aus).
+  bool _errorShowRetry = false;
 
   /// Steuert die Level-up-"Pop"-Animation (Skalierung des Badges).
   late final AnimationController _levelUpController;
@@ -94,6 +112,8 @@ class _RaceScreenState extends State<RaceScreen>
     _displayTicker?.cancel();
     _positionSub?.cancel();
     _timerService.dispose();
+    _beepPlayer.dispose();
+    _levelUpPlayer.dispose();
     super.dispose();
   }
 
@@ -111,7 +131,17 @@ class _RaceScreenState extends State<RaceScreen>
       return;
     }
 
-    // GPS ok → Countdown vorbereiten und starten.
+    // Lautstärke prüfen: Der Start wird per Beep signalisiert. Ist der Ton
+    // stumm, würde der Nutzer das Signal verpassen → freundlicher Hinweis.
+    final volume = await VolumeController.instance.getVolume();
+    if (!mounted) return;
+    if (volume <= 0.0) {
+      _setVolumeError();
+      return;
+    }
+
+    // GPS + Ton ok → (weiterhin zufälligen) Countdown vorbereiten und starten.
+    // Kein sichtbarer Zähler mehr – der Beep signalisiert den Start.
     _countdownValue = _timerService.randomCountdownSeconds();
     setState(() => _checkingGps = false);
 
@@ -129,7 +159,9 @@ class _RaceScreenState extends State<RaceScreen>
   void _onGo() {
     if (!mounted) return;
 
-    SystemSound.play(SystemSoundType.alert);
+    // Beep-Startsignal (Lautstärke wurde in _prepare geprüft) + Haptik.
+    // catchError: falls die Sounddatei (noch) fehlt → still, kein Absturz.
+    _beepPlayer.play(AssetSource('sounds/beep.mp3')).catchError((_) {});
     HapticFeedback.heavyImpact();
 
     _timerService.startStopwatch();
@@ -152,6 +184,23 @@ class _RaceScreenState extends State<RaceScreen>
   void _onPosition(Position pos) {
     if (!mounted || _phase != _Phase.running) return;
 
+    if (_isDistanceMode) {
+      // Fix-Strecke: ersten Fix nach dem Start als Referenz merken, dann die
+      // gelaufene Luftlinie messen und bei Erreichen der Ziel-Distanz stoppen.
+      final start = _distStart ??= pos;
+      final run = Geolocator.distanceBetween(
+        start.latitude,
+        start.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+      final remaining = widget.track.distanceMeters - run;
+      setState(() => _distanceToTarget = remaining > 0 ? remaining : 0);
+      if (run >= widget.track.distanceMeters) _finish();
+      return;
+    }
+
+    // Echte Strecke: Distanz zum festen Zielpunkt; Zielradius → stoppen.
     final dist = Geolocator.distanceBetween(
       pos.latitude,
       pos.longitude,
@@ -161,7 +210,6 @@ class _RaceScreenState extends State<RaceScreen>
 
     setState(() => _distanceToTarget = dist);
 
-    // Zielradius erreicht → automatisch stoppen.
     if (dist <= _targetRadiusMeters) {
       _finish();
     }
@@ -231,8 +279,9 @@ class _RaceScreenState extends State<RaceScreen>
       _leveledUp = leveledUp;
     });
 
-    // Feier-Animation starten, wenn ein Level-up passiert ist.
+    // Feier: Sound + Haptik + Animation, wenn ein Level-up passiert ist.
     if (leveledUp) {
+      _levelUpPlayer.play(AssetSource('sounds/levelup.mp3')).catchError((_) {});
       HapticFeedback.heavyImpact();
       _levelUpController.forward(from: 0);
     }
@@ -270,6 +319,19 @@ class _RaceScreenState extends State<RaceScreen>
     setState(() {
       _errorMessage = msg;
       _errorShowSettings = settings;
+      _errorShowRetry = false;
+      _checkingGps = false;
+    });
+  }
+
+  /// Hinweis, wenn die Lautstärke stumm ist (Start-Beep wäre nicht hörbar).
+  void _setVolumeError() {
+    setState(() {
+      _errorMessage = 'Bitte Lautstärke aktivieren.\n'
+          'Der Start wird per Beep-Ton signalisiert – bei stummem Ton '
+          'verpasst du das Signal.';
+      _errorShowSettings = false;
+      _errorShowRetry = true;
       _checkingGps = false;
     });
   }
@@ -294,8 +356,10 @@ class _RaceScreenState extends State<RaceScreen>
       _elapsedMs = 0;
       _finalMs = 0;
       _distanceToTarget = null;
+      _distStart = null;
       _errorMessage = null;
       _errorShowSettings = false;
+      _errorShowRetry = false;
     });
     _prepare();
   }
@@ -350,7 +414,7 @@ class _RaceScreenState extends State<RaceScreen>
     );
   }
 
-  /// Phase 1: grosser Countdown.
+  /// Phase 1: Warten auf das Beep-Startsignal (kein sichtbarer Countdown mehr).
   Widget _buildCountdown() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -358,7 +422,7 @@ class _RaceScreenState extends State<RaceScreen>
         const Text(
           'MACH DICH BEREIT…',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             letterSpacing: 2,
             fontWeight: FontWeight.bold,
             color: Colors.white70,
@@ -369,16 +433,19 @@ class _RaceScreenState extends State<RaceScreen>
           widget.track.name,
           style: const TextStyle(color: Colors.white38, fontSize: 14),
         ),
-        const SizedBox(height: 40),
-        Text(
-          '$_countdownValue',
-          style: const TextStyle(
-            fontSize: 160,
+        const SizedBox(height: 56),
+        const Icon(Icons.volume_up, size: 110, color: Colors.amber),
+        const SizedBox(height: 32),
+        const Text(
+          'Beim BEEP geht’s los!',
+          style: TextStyle(
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Colors.amber,
+            letterSpacing: 1,
           ),
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 12),
         const Text(
           'Zufälliger Start – nicht vorhersehbar.',
           style: TextStyle(color: Colors.white38, fontSize: 12),
@@ -414,7 +481,11 @@ class _RaceScreenState extends State<RaceScreen>
         ),
         const SizedBox(height: 8),
         Text(
-          dist != null ? 'Ziel in ${dist.toStringAsFixed(0)} m' : 'LÄUFT…',
+          dist != null
+              ? (_isDistanceMode
+                  ? 'Noch ${dist.toStringAsFixed(0)} m'
+                  : 'Ziel in ${dist.toStringAsFixed(0)} m')
+              : 'LÄUFT…',
           style: const TextStyle(color: Colors.white38, letterSpacing: 2),
         ),
         const SizedBox(height: 64),
@@ -599,6 +670,19 @@ class _RaceScreenState extends State<RaceScreen>
               style: TextStyle(color: Colors.amber),
             ),
           ),
+        if (_errorShowRetry) ...[
+          ElevatedButton.icon(
+            onPressed: _restart,
+            icon: const Icon(Icons.refresh),
+            label: const Text('ERNEUT VERSUCHEN'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         OutlinedButton.icon(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back),

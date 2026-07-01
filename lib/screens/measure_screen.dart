@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -36,6 +38,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
   final _locationService = LocationService();
   final _db = DatabaseService.instance;
   final _nameController = TextEditingController();
+
+  /// Steuert die Karte (Kamera auf Start/Ziel schwenken).
+  final _mapController = MapController();
+
+  /// Zuletzt bekannte aktuelle Position (für den Live-Marker auf der Karte).
+  LatLng? _currentLatLng;
 
   _Step _step = _Step.idle;
   bool _isLoading = false;
@@ -193,6 +201,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _step = _Step.startSet;
     });
     _startLiveTracking(start); // ab jetzt live mitzaehlen
+    _fitMap();
   }
 
   Future<void> _setEnd() async {
@@ -264,6 +273,35 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _stepsWalked = stepsWalked;
       _step = _Step.done;
     });
+    _fitMap();
+  }
+
+  /// Schwenkt/zoomt die Karte passend: beide Punkte einpassen, sonst auf den
+  /// vorhandenen Punkt zentrieren. Nach dem Frame, damit die Karte bereit ist.
+  void _fitMap() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final start = _startPos;
+      final end = _endPos;
+      try {
+        if (start != null && end != null) {
+          _mapController.fitCamera(
+            CameraFit.coordinates(
+              coordinates: [
+                LatLng(start.latitude, start.longitude),
+                LatLng(end.latitude, end.longitude),
+              ],
+              padding: const EdgeInsets.all(48),
+              maxZoom: 18,
+            ),
+          );
+        } else if (start != null) {
+          _mapController.move(LatLng(start.latitude, start.longitude), 18);
+        }
+      } catch (_) {
+        // Karte evtl. noch nicht gerendert – unkritisch, nächster Punkt fixt es.
+      }
+    });
   }
 
   /// Startet das Live-Mitzaehlen: abonniert den Positions-Strom und berechnet
@@ -276,6 +314,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
       setState(() {
         // Punkt 1: Genauigkeit IMMER aktualisieren, damit der Nutzer sie sieht.
         _currentAccuracy = pos.accuracy;
+        _currentLatLng = LatLng(pos.latitude, pos.longitude); // Live-Marker
+
         // Punkt 3: zu ungenaue Positionen NICHT in die Distanz einrechnen –
         // sonst verfaelschen Ausreisser den Wert.
         if (pos.accuracy <= _maxAccuracyMeters) {
@@ -488,6 +528,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _buildMap(),
+            const SizedBox(height: 16),
             _buildStatusCard(),
             const SizedBox(height: 16),
             _buildActionButtons(),
@@ -497,16 +539,81 @@ class _MeasureScreenState extends State<MeasureScreen> {
             ],
             const SizedBox(height: 24),
             _buildDistanzCard(),
+            // Streckenname + Speichern erst zeigen, wenn Start UND Ziel gesetzt
+            // sind (vorher gibt es noch nichts zu benennen/speichern).
             if (_step == _Step.done) ...[
               const SizedBox(height: 12),
               _buildComparisonCard(),
-            ],
-            const SizedBox(height: 16),
-            _buildNameField(),
-            if (_step == _Step.done) ...[
+              const SizedBox(height: 16),
+              _buildNameField(),
               const SizedBox(height: 24),
               _buildSaveButtons(),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Karte (OpenStreetMap) mit Start-, Ziel- und Live-Positions-Marker.
+  Widget _buildMap() {
+    final start = _startPos;
+    final end = _endPos;
+    final current = _currentLatLng;
+
+    // Startzentrum: gesetzter Start → aktuelle Position → Fallback (Bern).
+    final center = start != null
+        ? LatLng(start.latitude, start.longitude)
+        : current ?? const LatLng(46.9481, 7.4474);
+
+    final markers = <Marker>[
+      if (current != null && _step != _Step.done)
+        Marker(
+          point: current,
+          width: 24,
+          height: 24,
+          child: const Icon(Icons.my_location, color: Colors.lightBlueAccent, size: 24),
+        ),
+      if (start != null)
+        Marker(
+          point: LatLng(start.latitude, start.longitude),
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.trip_origin, color: Colors.greenAccent, size: 30),
+        ),
+      if (end != null)
+        Marker(
+          point: LatLng(end.latitude, end.longitude),
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.flag, color: Colors.redAccent, size: 30),
+        ),
+    ];
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 220,
+        child: FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: center,
+            initialZoom: 17,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+            ),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'dev.bergamin.bolt',
+            ),
+            MarkerLayer(markers: markers),
+            const RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution('OpenStreetMap contributors'),
+              ],
+            ),
           ],
         ),
       ),

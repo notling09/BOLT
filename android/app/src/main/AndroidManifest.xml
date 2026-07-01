@@ -11,6 +11,9 @@
          bestaetigt werden. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
 
+    <!-- Phase 8: Kartenkacheln (OpenStreetMap) werden aus dem Internet geladen. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="bolt"
         android:name="${applicationName}"

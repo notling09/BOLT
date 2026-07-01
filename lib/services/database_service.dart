@@ -24,7 +24,7 @@ class DatabaseService {
 
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tracks (
@@ -34,7 +34,8 @@ class DatabaseService {
             startLng      REAL    NOT NULL,
             endLat        REAL    NOT NULL,
             endLng        REAL    NOT NULL,
-            distanceMeters REAL   NOT NULL
+            distanceMeters REAL   NOT NULL,
+            isTemplate    INTEGER NOT NULL DEFAULT 0
           )
         ''');
 
@@ -46,8 +47,38 @@ class DatabaseService {
             date       INTEGER NOT NULL
           )
         ''');
+
+        await _seedTemplates(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // v1 -> v2: Spalte isTemplate ergaenzen und Fix-Strecken saeen.
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE tracks ADD COLUMN isTemplate INTEGER NOT NULL DEFAULT 0',
+          );
+          await _seedTemplates(db);
+        }
       },
     );
+  }
+
+  /// Legt die vordefinierten Fix-Strecken an (50/100/200/300 m).
+  ///
+  /// Sie haben keine echten GPS-Zielkoordinaten (0/0); beim Sprinten wird
+  /// distanz-basiert gestoppt (siehe [Track.isTemplate] / RaceScreen).
+  Future<void> _seedTemplates(Database db) async {
+    const distances = [50, 100, 200, 300];
+    for (final d in distances) {
+      await db.insert('tracks', {
+        'name': '$d Meter',
+        'startLat': 0,
+        'startLng': 0,
+        'endLat': 0,
+        'endLng': 0,
+        'distanceMeters': d.toDouble(),
+        'isTemplate': 1,
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -69,11 +100,33 @@ class DatabaseService {
     );
   }
 
-  /// Alle gespeicherten Strecken laden (neueste zuerst).
+  /// Alle Strecken laden: Fix-Strecken zuerst (nach Distanz), dann die
+  /// eigenen (neueste zuerst).
   Future<List<Track>> getTracks() async {
     final db = await database;
-    final rows = await db.query('tracks', orderBy: 'id DESC');
+    final rows = await db.query(
+      'tracks',
+      orderBy: 'isTemplate DESC, isTemplate * distanceMeters ASC, id DESC',
+    );
     return rows.map(Track.fromMap).toList();
+  }
+
+  /// Streckennamen ändern.
+  Future<void> updateTrackName(int id, String name) async {
+    final db = await database;
+    await db.update(
+      'tracks',
+      {'name': name},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Strecke löschen – inkl. aller zugehörigen Läufe (kein verwaistes Datum).
+  Future<void> deleteTrack(int id) async {
+    final db = await database;
+    await db.delete('runs', where: 'trackId = ?', whereArgs: [id]);
+    await db.delete('tracks', where: 'id = ?', whereArgs: [id]);
   }
 
   // ---------------------------------------------------------------------------
