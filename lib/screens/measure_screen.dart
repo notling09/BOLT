@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
 import '../services/location_service.dart';
+import 'motion_test_screen.dart';
 import 'race_screen.dart';
 
 /// Die drei Schritte der Streckenvermessung (UC1 / User-Story 1).
@@ -471,6 +472,16 @@ class _MeasureScreenState extends State<MeasureScreen> {
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.amber,
+        actions: [
+          // Temporaerer Zugang zum Sprint-Start-Test (Teil B).
+          IconButton(
+            icon: const Icon(Icons.directions_run),
+            tooltip: 'Sprint-Start-Test',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MotionTestScreen()),
+            ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

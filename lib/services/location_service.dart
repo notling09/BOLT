@@ -65,7 +65,9 @@ class LocationService {
     // 3. Berechtigung vorhanden (whileInUse oder always) → Position auslesen.
     final position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best, // hoechste Praezision fuer kurze Sprints
+        // bestForNavigation nutzt die GNSS-Sensoren (inkl. Dual-Frequency
+        // L1+L5) maximal aus – die schaerfste Stufe fuer kurze Sprints.
+        accuracy: LocationAccuracy.bestForNavigation,
       ),
     );
     return LocationResult(LocationStatus.success, position);
@@ -77,10 +79,13 @@ class LocationService {
   /// [getCurrentPosition] sichergestellt). `distanceFilter: 0` = jede
   /// Änderung melden, damit der Test-Screen wirklich "live" wirkt.
   Stream<Position> positionStream() {
+    // AndroidSettings erlaubt ein festes Update-Intervall. 500 ms statt der
+    // ueblichen 1–2 s -> haeufigere, feinere Updates fuer die Live-Distanz.
     return Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 0,
+      locationSettings: AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0, // jede noch so kleine Bewegung melden
+        intervalDuration: const Duration(milliseconds: 500),
       ),
     );
   }
