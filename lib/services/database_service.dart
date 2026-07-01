@@ -111,6 +111,14 @@ class DatabaseService {
     return rows.map(Track.fromMap).toList();
   }
 
+  /// Eine einzelne Strecke laden (oder null, wenn es sie nicht mehr gibt).
+  Future<Track?> getTrack(int id) async {
+    final db = await database;
+    final rows =
+        await db.query('tracks', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Track.fromMap(rows.first);
+  }
+
   /// Streckennamen ändern.
   Future<void> updateTrackName(int id, String name) async {
     final db = await database;
@@ -119,6 +127,18 @@ class DatabaseService {
       {'name': name},
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  /// Komplette Strecke aktualisieren (z. B. nach dem Neu-Vermessen von
+  /// Start/Ziel/Distanz). Erwartet einen Track MIT id.
+  Future<void> updateTrack(Track track) async {
+    final db = await database;
+    await db.update(
+      'tracks',
+      track.toMap(),
+      where: 'id = ?',
+      whereArgs: [track.id],
     );
   }
 

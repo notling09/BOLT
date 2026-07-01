@@ -29,7 +29,10 @@ enum _Step {
 /// Die Strecke wird mit [DatabaseService.insertTrack] gespeichert und bekommt
 /// dabei eine id, die der RaceScreen für das Speichern des Laufs braucht.
 class MeasureScreen extends StatefulWidget {
-  const MeasureScreen({super.key});
+  /// Wenn gesetzt: bestehende Strecke NEU vermessen (Update statt neu anlegen).
+  final Track? editTrack;
+
+  const MeasureScreen({super.key, this.editTrack});
 
   @override
   State<MeasureScreen> createState() => _MeasureScreenState();
@@ -131,6 +134,10 @@ class _MeasureScreenState extends State<MeasureScreen>
   @override
   void initState() {
     super.initState();
+    // Bearbeiten-Modus: bestehenden Namen übernehmen.
+    if (widget.editTrack != null) {
+      _nameController.text = widget.editTrack!.name;
+    }
     _initPedometer();
   }
 
@@ -469,18 +476,30 @@ class _MeasureScreenState extends State<MeasureScreen>
     setState(() => _isSaving = true);
 
     final name = _nameController.text.trim();
+    final edit = widget.editTrack;
     // Wir speichern den kombinierten (Sensor-Fusion-)Wert als Distanz, falls
     // verfuegbar – sonst die reine GPS-Distanz.
     final track = Track(
-      name: name.isEmpty ? 'Meine Strecke' : name,
+      id: edit?.id, // im Bearbeiten-Modus: bestehende id behalten
+      name: name.isEmpty ? (edit?.name ?? 'Meine Strecke') : name,
       startLat: start.latitude,
       startLng: start.longitude,
       endLat: end.latitude,
       endLng: end.longitude,
       distanceMeters: _combinedDistance() ?? dist,
+      // Neu vermessen -> echte Koordinaten -> keine Vorgabe-Strecke mehr.
+      isTemplate: false,
     );
 
-    final saved = await _db.insertTrack(track);
+    Track saved;
+    if (edit != null) {
+      // Bestehende Strecke aktualisieren.
+      await _db.updateTrack(track);
+      saved = track;
+    } else {
+      // Neue Strecke anlegen (bekommt eine id).
+      saved = await _db.insertTrack(track);
+    }
     if (!mounted) return null;
 
     setState(() {
@@ -555,9 +574,9 @@ class _MeasureScreenState extends State<MeasureScreen>
           onPressed: () => Navigator.of(context).pop(),
           tooltip: 'Schliessen',
         ),
-        title: const Text(
-          'STRECKE VERMESSEN',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
+        title: Text(
+          widget.editTrack != null ? 'STRECKE BEARBEITEN' : 'STRECKE VERMESSEN',
+          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.amber,

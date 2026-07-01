@@ -12,10 +12,12 @@ import '../models/track.dart';
 import '../services/database_service.dart';
 import '../services/game_service.dart';
 import '../services/location_service.dart';
+import '../services/motion_service.dart';
 import '../services/timer_service.dart';
 
 /// Die Phasen des Rennens (UC2/UC3, User-Stories 2 & 3).
 enum _Phase {
+  holdStill, // 3 Sek. stillhalten, bevor der Start beginnt
   countdown, // variabler Countdown ("MACH DICH BEREIT…")
   running,   // Stoppuhr läuft, GPS prüft live auf Zielerreichung
   finished,  // Ziel erreicht – Ergebnis wird angezeigt
@@ -48,6 +50,25 @@ class _RaceScreenState extends State<RaceScreen>
 
   /// Spielt den Level-up-Sound am Ende (Asset assets/sounds/levelup.wav).
   final AudioPlayer _levelUpPlayer = AudioPlayer();
+
+  /// Beschleunigungssensor: fürs Stillhalten VOR dem Start und für die
+  /// Reaktionszeit-Messung (Beep → erste Bewegung).
+  final MotionService _motion = MotionService();
+  StreamSubscription<double>? _accelSub;
+  double _lastMagnitude = 0; // letzte Beschleunigungs-Stärke (m/s²)
+
+  /// Stillhalten: Ticker zählt hoch, solange man ruhig ist; Bewegung setzt zurück.
+  Timer? _stillTicker;
+  int _stillMs = 0;
+
+  /// Reaktionszeit in ms (Beep → erste erkannte Bewegung); null bis erkannt.
+  int? _reactionMs;
+
+  /// Unter dieser Beschleunigung (m/s²) gilt das Handy als "still".
+  static const double _stillThreshold = 1.5;
+
+  /// So lange muss man vor dem Start ruhig halten.
+  static const int _stillHoldMs = 3000;
 
   /// True für Fix-Strecken (Vorgaben ohne echte Zielkoordinaten) → beim
   /// Sprinten wird distanz-basiert gestoppt statt per Zielradius.
@@ -114,6 +135,8 @@ class _RaceScreenState extends State<RaceScreen>
     _timerService.dispose();
     _beepPlayer.dispose();
     _levelUpPlayer.dispose();
+    _accelSub?.cancel();
+    _stillTicker?.cancel();
     super.dispose();
   }
 
@@ -140,11 +163,53 @@ class _RaceScreenState extends State<RaceScreen>
       return;
     }
 
-    // GPS + Ton ok → (weiterhin zufälligen) Countdown vorbereiten und starten.
-    // Kein sichtbarer Zähler mehr – der Beep signalisiert den Start.
-    _countdownValue = _timerService.randomCountdownSeconds();
-    setState(() => _checkingGps = false);
+    // GPS + Ton ok. Beschleunigungssensor abonnieren (Stillhalten + Reaktion).
+    _accelSub = _motion.accelerationMagnitude().listen(
+      (m) {
+        _lastMagnitude = m;
+        // Reaktionszeit: erste Bewegung NACH dem Beep.
+        if (_phase == _Phase.running &&
+            _reactionMs == null &&
+            m >= MotionService.startThreshold) {
+          setState(() => _reactionMs = _timerService.elapsedMs);
+        }
+      },
+      onError: (_) {}, // kein Sensor -> einfach ohne Reaktion/Stillhalten weiter
+    );
 
+    // Erst stillhalten, dann Countdown.
+    setState(() {
+      _checkingGps = false;
+      _phase = _Phase.holdStill;
+      _stillMs = 0;
+    });
+    _startStillTicker();
+  }
+
+  /// Zählt hoch, solange man ruhig hält; Bewegung setzt zurück. Bei 3 s → Start.
+  void _startStillTicker() {
+    _stillTicker?.cancel();
+    _stillTicker = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (!mounted) return;
+      if (_lastMagnitude < _stillThreshold) {
+        _stillMs += 100;
+      } else {
+        _stillMs = 0; // Bewegung erkannt → wieder von vorne
+      }
+      setState(() {});
+      if (_stillMs >= _stillHoldMs) {
+        _stillTicker?.cancel();
+        _startCountdown();
+      }
+    });
+  }
+
+  /// Variabler (zufälliger) Countdown bis zum Beep-Start.
+  /// Kein sichtbarer Zähler – der Beep signalisiert den Start.
+  void _startCountdown() {
+    if (!mounted) return;
+    _countdownValue = _timerService.randomCountdownSeconds();
+    setState(() => _phase = _Phase.countdown);
     _timerService.startCountdown(
       seconds: _countdownValue,
       onTick: (remaining) {
@@ -346,6 +411,8 @@ class _RaceScreenState extends State<RaceScreen>
   void _abort() {
     _displayTicker?.cancel();
     _positionSub?.cancel();
+    _accelSub?.cancel();
+    _stillTicker?.cancel();
     _timerService.cancelCountdown();
     _timerService.stopStopwatch();
     Navigator.of(context).pop();
@@ -355,14 +422,18 @@ class _RaceScreenState extends State<RaceScreen>
   void _restart() {
     _displayTicker?.cancel();
     _positionSub?.cancel();
+    _accelSub?.cancel();
+    _stillTicker?.cancel();
     setState(() {
-      _phase = _Phase.countdown;
+      _phase = _Phase.holdStill;
       _checkingGps = true;
       _countdownValue = 0;
       _elapsedMs = 0;
       _finalMs = 0;
       _distanceToTarget = null;
       _distStart = null;
+      _stillMs = 0;
+      _reactionMs = null;
       _errorMessage = null;
       _errorShowSettings = false;
       _errorShowRetry = false;
@@ -402,10 +473,73 @@ class _RaceScreenState extends State<RaceScreen>
     if (_checkingGps) return _buildPreparing();
 
     return switch (_phase) {
+      _Phase.holdStill => _buildHoldStill(),
       _Phase.countdown => _buildCountdown(),
       _Phase.running => _buildRunning(),
       _Phase.finished => _buildFinished(),
     };
+  }
+
+  /// Phase 0: Stillhalten, bis 3 s ruhig gehalten wurde.
+  Widget _buildHoldStill() {
+    final progress = (_stillMs / _stillHoldMs).clamp(0.0, 1.0);
+    final secondsLeft = ((_stillHoldMs - _stillMs) / 1000).ceil();
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.pan_tool, size: 90, color: Colors.amber),
+        const SizedBox(height: 24),
+        const Text(
+          'HALTE STILL',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+            color: Colors.white70,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          widget.track.name,
+          style: const TextStyle(color: Colors.white38, fontSize: 14),
+        ),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: 220,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 12,
+              backgroundColor: Colors.grey[850],
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Noch $secondsLeft s ruhig halten…',
+          style: const TextStyle(color: Colors.amber, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Bewegst du dich, geht es von vorne los.',
+          style: TextStyle(color: Colors.white38, fontSize: 12),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 40),
+        OutlinedButton.icon(
+          onPressed: _abort,
+          icon: const Icon(Icons.close),
+          label: const Text('ABBRECHEN'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.redAccent,
+            side: const BorderSide(color: Colors.redAccent),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+          ),
+        ),
+      ],
+    );
   }
 
   /// GPS-Vorbereitung (kurz vor dem Countdown).
@@ -541,6 +675,27 @@ class _RaceScreenState extends State<RaceScreen>
           '${widget.track.name} · ${widget.track.distanceMeters.toStringAsFixed(0)} m',
           style: const TextStyle(color: Colors.white38, fontSize: 13),
         ),
+        if (_reactionMs != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.flash_on, color: Colors.amber, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'Reaktionszeit: ${(_reactionMs! / 1000).toStringAsFixed(2)} s',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         // XP + Bestzeit-Anzeige (nur wenn Strecke eine echte id hatte).
         if (player != null) ...[
