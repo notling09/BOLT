@@ -160,7 +160,8 @@ class _RaceScreenState extends State<RaceScreen>
     if (!mounted) return;
 
     // Beep-Startsignal (Lautstärke wurde in _prepare geprüft) + Haptik.
-    _beepPlayer.play(AssetSource('sounds/beep.wav'));
+    // catchError: falls die Sounddatei (noch) fehlt → still, kein Absturz.
+    _beepPlayer.play(AssetSource('sounds/beep.mp3')).catchError((_) {});
     HapticFeedback.heavyImpact();
 
     _timerService.startStopwatch();
@@ -280,7 +281,7 @@ class _RaceScreenState extends State<RaceScreen>
 
     // Feier: Sound + Haptik + Animation, wenn ein Level-up passiert ist.
     if (leveledUp) {
-      _levelUpPlayer.play(AssetSource('sounds/levelup.wav'));
+      _levelUpPlayer.play(AssetSource('sounds/levelup.mp3')).catchError((_) {});
       HapticFeedback.heavyImpact();
       _levelUpController.forward(from: 0);
     }

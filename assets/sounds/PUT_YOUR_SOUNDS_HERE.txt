@@ -1,19 +1,22 @@
-EIGENE SOUNDS
-=============
+EIGENE SOUNDS (MP3)
+===================
 
 Die App nutzt zwei Sound-Dateien in diesem Ordner:
 
-  1) beep.wav      -> Start-Signal beim Sprint-Start (nach dem "MACH DICH BEREIT")
-  2) levelup.wav   -> Level-up-Fanfare am Ende, wenn man ein Level aufsteigt
+  1) beep.mp3      -> Start-Signal beim Sprint-Start (nach "MACH DICH BEREIT")
+  2) levelup.mp3   -> Level-up-Fanfare am Ende, wenn man ein Level aufsteigt
 
-So ersetzt ihr sie durch eure eigenen:
-- Eure Dateien hier ablegen und die vorhandenen ueberschreiben
-  (gleiche Namen: beep.wav bzw. levelup.wav, WAV-Format). Fertig.
+WICHTIG: Legt eure beiden MP3s hier ab, GENAU mit diesen Namen:
 
-Anderes Format (z. B. .mp3)?
-- Datei hier ablegen und in race_screen.dart den Pfad anpassen:
-    AssetSource('sounds/beep.wav')      -> Start
-    AssetSource('sounds/levelup.wav')   -> Level-up
-  (audioplayers spielt auch mp3.)
+    assets/sounds/beep.mp3
+    assets/sounds/levelup.mp3
+
+Danach das naechste Mal "flutter run" starten – die Sounds werden automatisch
+verwendet. Fehlt eine Datei, bleibt es an der Stelle einfach still (kein Absturz).
+
+Anderes Format/andere Namen?
+- In race_screen.dart die Pfade anpassen:
+    AssetSource('sounds/beep.mp3')      -> Start
+    AssetSource('sounds/levelup.mp3')   -> Level-up
 
 Tipp: Start-Beep kurz (~0.2 s), Level-up etwas laenger (~0.4 s).
