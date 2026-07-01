@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="bolt"
+        android:label="B.O.L.T"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -11,7 +11,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
 import '../services/location_service.dart';
-import 'motion_test_screen.dart';
 import 'race_screen.dart';
 
 /// Die drei Schritte der Streckenvermessung (UC1 / User-Story 1).
@@ -29,13 +28,17 @@ enum _Step {
 /// Die Strecke wird mit [DatabaseService.insertTrack] gespeichert und bekommt
 /// dabei eine id, die der RaceScreen für das Speichern des Laufs braucht.
 class MeasureScreen extends StatefulWidget {
-  const MeasureScreen({super.key});
+  /// Wenn gesetzt: bestehende Strecke NEU vermessen (Update statt neu anlegen).
+  final Track? editTrack;
+
+  const MeasureScreen({super.key, this.editTrack});
 
   @override
   State<MeasureScreen> createState() => _MeasureScreenState();
 }
 
-class _MeasureScreenState extends State<MeasureScreen> {
+class _MeasureScreenState extends State<MeasureScreen>
+    with SingleTickerProviderStateMixin {
   final _locationService = LocationService();
   final _db = DatabaseService.instance;
   final _nameController = TextEditingController();
@@ -45,6 +48,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   /// Zuletzt bekannte aktuelle Position (für den Live-Marker auf der Karte).
   LatLng? _currentLatLng;
+
+  /// Steuert die Lauf-Animation (Stickman) während der Punkterfassung.
+  /// Wird mit jeder akzeptierten Messung schneller (an _captureCount gekoppelt).
+  late final AnimationController _runnerController =
+      AnimationController(vsync: this);
+  Duration? _runnerBaseDuration; // Original-Laufdauer der Animation (1x-Tempo)
 
   _Step _step = _Step.idle;
   bool _isLoading = false;
@@ -124,6 +133,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
   @override
   void initState() {
     super.initState();
+    // Bearbeiten-Modus: bestehenden Namen übernehmen.
+    if (widget.editTrack != null) {
+      _nameController.text = widget.editTrack!.name;
+    }
     _initPedometer();
   }
 
@@ -148,6 +161,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     _captureTimer?.cancel();
     _stepSub?.cancel();
     _nameController.dispose();
+    _runnerController.dispose();
     super.dispose();
   }
 
@@ -203,6 +217,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     });
     _startLiveTracking(start); // ab jetzt live mitzaehlen
     _fitMap();
+    _showPointSetHint('Startpunkt gesetzt');
   }
 
   Future<void> _setEnd() async {
@@ -275,6 +290,27 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _step = _Step.done;
     });
     _fitMap();
+    _showPointSetHint('Zielpunkt gesetzt');
+  }
+
+  /// Kurze Bestätigung (SnackBar), dass ein Punkt erfolgreich gesetzt wurde.
+  void _showPointSetHint(String msg) {
+    if (!mounted) return;
+    // Evtl. noch sichtbare SnackBar sofort ersetzen, sonst wartet die neue.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(msg),
+          ],
+        ),
+        backgroundColor: Colors.green[800],
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   /// Start- und Zielpunkt vertauschen (z. B. um nicht zum Start zurückzulaufen).
@@ -294,6 +330,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _savedTrack = null;
     });
     _fitMap();
+    _showPointSetHint('Start und Ziel getauscht');
   }
 
   /// Schwenkt/zoomt die Karte passend: beide Punkte einpassen, sonst auf den
@@ -373,6 +410,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       if (pos.accuracy <= _goodAccuracyMeters) {
         samples.add(pos);
         setState(() => _captureCount = samples.length);
+        _applyRunnerSpeed(); // Stickman wird mit jeder Messung schneller
         if (samples.length >= _requiredSamples) {
           finish(_averagePosition(samples));
         }
@@ -440,18 +478,30 @@ class _MeasureScreenState extends State<MeasureScreen> {
     setState(() => _isSaving = true);
 
     final name = _nameController.text.trim();
+    final edit = widget.editTrack;
     // Wir speichern den kombinierten (Sensor-Fusion-)Wert als Distanz, falls
     // verfuegbar – sonst die reine GPS-Distanz.
     final track = Track(
-      name: name.isEmpty ? 'Meine Strecke' : name,
+      id: edit?.id, // im Bearbeiten-Modus: bestehende id behalten
+      name: name.isEmpty ? (edit?.name ?? 'Meine Strecke') : name,
       startLat: start.latitude,
       startLng: start.longitude,
       endLat: end.latitude,
       endLng: end.longitude,
       distanceMeters: _combinedDistance() ?? dist,
+      // Neu vermessen -> echte Koordinaten -> keine Vorgabe-Strecke mehr.
+      isTemplate: false,
     );
 
-    final saved = await _db.insertTrack(track);
+    Track saved;
+    if (edit != null) {
+      // Bestehende Strecke aktualisieren.
+      await _db.updateTrack(track);
+      saved = track;
+    } else {
+      // Neue Strecke anlegen (bekommt eine id).
+      saved = await _db.insertTrack(track);
+    }
     if (!mounted) return null;
 
     setState(() {
@@ -526,22 +576,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
           onPressed: () => Navigator.of(context).pop(),
           tooltip: 'Schliessen',
         ),
-        title: const Text(
-          'STRECKE VERMESSEN',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
+        title: Text(
+          widget.editTrack != null ? 'STRECKE BEARBEITEN' : 'STRECKE VERMESSEN',
+          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.amber,
-        actions: [
-          // Temporaerer Zugang zum Sprint-Start-Test (Teil B).
-          IconButton(
-            icon: const Icon(Icons.directions_run),
-            tooltip: 'Sprint-Start-Test',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MotionTestScreen()),
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -624,7 +664,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        height: 220,
+        height: 170,
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
@@ -663,7 +703,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     };
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
@@ -720,14 +760,30 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// einen AnimationController zusätzlich an _captureCount koppeln.)
   Widget _buildCaptureAnimation() {
     return SizedBox(
-      height: 80,
+      height: 54,
       child: Lottie.asset(
         'assets/lottie/runner.json',
-        repeat: true,
+        controller: _runnerController,
+        onLoaded: (composition) {
+          _runnerBaseDuration = composition.duration;
+          _applyRunnerSpeed();
+        },
         errorBuilder: (_, _, _) =>
             const CircularProgressIndicator(color: Colors.amber),
       ),
     );
+  }
+
+  /// Setzt das Lauf-Tempo des Stickman abhängig von der Anzahl akzeptierter
+  /// Messungen: 1x bei 0 Messungen, danach pro Messung ~60% schneller.
+  void _applyRunnerSpeed() {
+    final base = _runnerBaseDuration;
+    if (base == null) return;
+    final speed = 1.0 + _captureCount * 0.6; // 0→1x, 5→~4x
+    _runnerController.duration = base * (1 / speed);
+    _runnerController
+      ..reset()
+      ..repeat();
   }
 
   Widget _coordRow(String label, Position pos) {
@@ -797,20 +853,25 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   /// Roter Hinweis-Block, wenn GPS nicht verfügbar / keine Berechtigung.
   Widget _buildErrorCard() {
-    final (String msg, bool showSettingsButton) = switch (_gpsError) {
+    // Pro Fehlerart: Text + optionaler Aktions-Button (Label + Aktion).
+    final (String msg, String? actionLabel, VoidCallback? action) =
+        switch (_gpsError) {
       LocationStatus.serviceDisabled => (
-        'GPS ist ausgeschaltet.\nBitte in den Geräte-Einstellungen aktivieren.',
-        false,
+        'GPS ist ausgeschaltet.\nBitte den Standort einschalten.',
+        'GPS EINSCHALTEN',
+        Geolocator.openLocationSettings, // öffnet die Standort-Einstellungen
       ),
       LocationStatus.permissionDenied => (
         'Standort-Berechtigung verweigert.\nBitte nochmals erlauben.',
-        false,
+        null,
+        null,
       ),
       LocationStatus.permissionDeniedForever => (
         'Berechtigung dauerhaft verweigert.\nBitte in den App-Einstellungen freigeben.',
-        true,
+        'APP-EINSTELLUNGEN ÖFFNEN',
+        _locationService.openAppSettings,
       ),
-      _ => ('Unbekannter GPS-Fehler.', false),
+      _ => ('Unbekannter GPS-Fehler.', null, null),
     };
 
     return Container(
@@ -831,14 +892,21 @@ class _MeasureScreenState extends State<MeasureScreen> {
               Expanded(child: Text(msg, style: const TextStyle(fontSize: 13))),
             ],
           ),
-          if (showSettingsButton)
-            TextButton(
-              onPressed: _locationService.openAppSettings,
-              child: const Text(
-                'App-Einstellungen öffnen',
-                style: TextStyle(color: Colors.amber),
+          if (action != null && actionLabel != null) ...[
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: action,
+                icon: const Icon(Icons.settings, size: 18),
+                label: Text(actionLabel),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                ),
               ),
             ),
+          ],
         ],
       ),
     );

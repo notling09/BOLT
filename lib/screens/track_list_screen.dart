@@ -4,6 +4,7 @@ import '../models/track.dart';
 import '../services/database_service.dart';
 import 'measure_screen.dart';
 import 'race_screen.dart';
+import 'track_detail_screen.dart';
 
 /// Zeigt alle gespeicherten Strecken an (US6: Strecke speichern / wählen).
 ///
@@ -47,6 +48,15 @@ class _TrackListScreenState extends State<TrackListScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => RaceScreen(track: track)),
     );
+  }
+
+  /// Übersicht zur Strecke öffnen (Karte, Bestzeit, Neu-vermessen); danach
+  /// die Liste neu laden, weil die Strecke geändert worden sein könnte.
+  Future<void> _openDetail(Track track) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => TrackDetailScreen(track: track)),
+    );
+    await _loadTracks();
   }
 
   /// Zum Vermessen-Screen wechseln; nach Rückkehr Streckenliste neu laden.
@@ -225,6 +235,7 @@ class _TrackListScreenState extends State<TrackListScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
+        onTap: () => _openDetail(track),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Icon(
           track.isTemplate ? Icons.straighten : Icons.place,
