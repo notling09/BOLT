@@ -59,39 +59,10 @@ class _TrackListScreenState extends State<TrackListScreen> {
 
   /// Dialog zum Umbenennen einer Strecke.
   Future<void> _renameTrack(Track track) async {
-    final controller = TextEditingController(text: track.name);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('Strecke umbenennen'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Neuer Name',
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.amber),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Abbrechen',
-                style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Speichern',
-                style: TextStyle(color: Colors.amber)),
-          ),
-        ],
-      ),
+      builder: (_) => _RenameDialog(initialName: track.name),
     );
-    controller.dispose();
 
     if (newName == null || newName.isEmpty || track.id == null) return;
     await _db.updateTrackName(track.id!, newName);
@@ -303,6 +274,62 @@ class _TrackListScreenState extends State<TrackListScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Umbenennen-Dialog, der seinen TextEditingController selbst verwaltet.
+///
+/// Wichtig: Der Controller wird im dispose() dieses Widgets freigegeben – erst
+/// wenn das Textfeld wirklich aus dem Baum ist. (Frühere Freigabe direkt nach
+/// showDialog löste den Fehler «_dependents.isEmpty is not true» aus.)
+class _RenameDialog extends StatefulWidget {
+  final String initialName;
+
+  const _RenameDialog({required this.initialName});
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.grey[900],
+      title: const Text('Strecke umbenennen'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.sentences,
+        style: const TextStyle(color: Colors.white),
+        onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        decoration: const InputDecoration(
+          hintText: 'Neuer Name',
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.amber),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Abbrechen', style: TextStyle(color: Colors.white54)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Speichern', style: TextStyle(color: Colors.amber)),
+        ),
+      ],
     );
   }
 }

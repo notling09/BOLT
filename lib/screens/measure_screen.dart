@@ -528,13 +528,13 @@ class _MeasureScreenState extends State<MeasureScreen> {
             ],
             const SizedBox(height: 24),
             _buildDistanzCard(),
+            // Streckenname + Speichern erst zeigen, wenn Start UND Ziel gesetzt
+            // sind (vorher gibt es noch nichts zu benennen/speichern).
             if (_step == _Step.done) ...[
               const SizedBox(height: 12),
               _buildComparisonCard(),
-            ],
-            const SizedBox(height: 16),
-            _buildNameField(),
-            if (_step == _Step.done) ...[
+              const SizedBox(height: 16),
+              _buildNameField(),
               const SizedBox(height: 24),
               _buildSaveButtons(),
             ],

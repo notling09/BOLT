@@ -1,0 +1,17 @@
+EIGENER BEEP-SOUND
+==================
+
+Der Sprint-Start spielt die Datei:
+
+    assets/sounds/beep.wav
+
+So ersetzt ihr sie durch euren eigenen Sound:
+- Euren Beep als  beep.wav  (WAV-Format) hier ablegen und die vorhandene
+  Datei ueberschreiben. Fertig – der Code nutzt automatisch diese Datei.
+
+Wollt ihr ein anderes Format (z. B. beep.mp3)?
+- Datei hier ablegen und im Code in race_screen.dart die Zeile
+  AssetSource('sounds/beep.wav')  auf euren Dateinamen anpassen.
+  (audioplayers kann auch mp3 abspielen.)
+
+Tipp: kurz halten (~0.2 s), damit das Signal knackig ist.
