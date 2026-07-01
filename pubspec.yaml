@@ -77,9 +77,9 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Phase 8: Assets – Beep-Sound (Start-Signal) und Logo im Hauptmenue.
+  # Phase 8: Assets – Sounds (Start-Beep + Level-up) und Logo im Hauptmenue.
   assets:
-    - assets/sounds/beep.wav
+    - assets/sounds/
     - assets/images/
 
   # To add assets to your application, add an assets section, like this:

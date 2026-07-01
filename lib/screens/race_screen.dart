@@ -46,6 +46,9 @@ class _RaceScreenState extends State<RaceScreen>
   /// Spielt das Beep-Startsignal (Asset assets/sounds/beep.wav).
   final AudioPlayer _beepPlayer = AudioPlayer();
 
+  /// Spielt den Level-up-Sound am Ende (Asset assets/sounds/levelup.wav).
+  final AudioPlayer _levelUpPlayer = AudioPlayer();
+
   /// True für Fix-Strecken (Vorgaben ohne echte Zielkoordinaten) → beim
   /// Sprinten wird distanz-basiert gestoppt statt per Zielradius.
   bool get _isDistanceMode => widget.track.isTemplate;
@@ -110,6 +113,7 @@ class _RaceScreenState extends State<RaceScreen>
     _positionSub?.cancel();
     _timerService.dispose();
     _beepPlayer.dispose();
+    _levelUpPlayer.dispose();
     super.dispose();
   }
 
@@ -274,8 +278,9 @@ class _RaceScreenState extends State<RaceScreen>
       _leveledUp = leveledUp;
     });
 
-    // Feier-Animation starten, wenn ein Level-up passiert ist.
+    // Feier: Sound + Haptik + Animation, wenn ein Level-up passiert ist.
     if (leveledUp) {
+      _levelUpPlayer.play(AssetSource('sounds/levelup.wav'));
       HapticFeedback.heavyImpact();
       _levelUpController.forward(from: 0);
     }
