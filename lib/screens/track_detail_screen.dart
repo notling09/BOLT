@@ -5,13 +5,12 @@ import 'package:latlong2/latlong.dart';
 import '../models/run.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
-import 'measure_screen.dart';
 import 'race_screen.dart';
 
 /// Übersicht zu einer gespeicherten Strecke (Phase 9).
 ///
 /// Zeigt Karte (Start/Ziel), Distanz, Bestzeit und die Läufe. Von hier kann
-/// man die Strecke sprinten ODER neu vermessen (Start/Ziel ersetzen).
+/// man die Strecke sprinten oder Start/Ziel tauschen.
 class TrackDetailScreen extends StatefulWidget {
   final Track track;
 
@@ -57,11 +56,42 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     );
   }
 
-  Future<void> _reMeasure() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => MeasureScreen(editTrack: _track)),
+  /// Vertauscht Start und Ziel der gespeicherten Strecke (dauerhaft in der DB,
+  /// jederzeit wieder zurück-tauschbar). Distanz bleibt gleich (A→B = B→A);
+  /// die Karten-Marker (grün=Start, rot=Ziel) tauschen automatisch.
+  Future<void> _swapStartEnd() async {
+    final t = _track;
+    final id = t.id;
+    if (id == null) return;
+
+    final swapped = Track(
+      id: id,
+      name: t.name,
+      startLat: t.endLat,
+      startLng: t.endLng,
+      endLat: t.startLat,
+      endLng: t.startLng,
+      distanceMeters: t.distanceMeters,
+      isTemplate: t.isTemplate,
     );
-    await _load(); // nach Rückkehr neuen Stand anzeigen
+    await _db.updateTrack(swapped);
+    await _load();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.swap_horiz, color: Colors.white, size: 18),
+            SizedBox(width: 8),
+            Text('Start und Ziel getauscht'),
+          ],
+        ),
+        backgroundColor: Colors.green[800],
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   String _formatTime(int ms) {
@@ -248,14 +278,14 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
-        // "Start/Ziel ändern" nur für selbst vermessene Strecken – bei
-        // Vorgabe-Strecken (feste Distanz) ergibt das keinen Sinn.
+        // "Start/Ziel tauschen" nur für selbst vermessene Strecken – bei
+        // Vorgabe-Strecken (feste Distanz, keine Koordinaten) sinnlos.
         if (!_track.isTemplate) ...[
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: _reMeasure,
-            icon: const Icon(Icons.edit_location_alt),
-            label: const Text('START/ZIEL ÄNDERN'),
+            onPressed: _swapStartEnd,
+            icon: const Icon(Icons.swap_horiz),
+            label: const Text('START/ZIEL TAUSCHEN'),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.amber,
               side: const BorderSide(color: Colors.amber),

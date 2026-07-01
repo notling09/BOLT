@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Expanded(
             child: Image.asset(
-              'assets/images/logo.png',
+              'assets/images/logobolt.png',
               fit: BoxFit.contain,
               alignment: Alignment.centerLeft,
               errorBuilder: (_, _, _) => FittedBox(
