@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:lottie/lottie.dart' hide Marker;
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -272,6 +273,25 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _currentAccuracy = end.accuracy; // gemittelte Genauigkeit der Ziel-Messung
       _stepsWalked = stepsWalked;
       _step = _Step.done;
+    });
+    _fitMap();
+  }
+
+  /// Start- und Zielpunkt vertauschen (z. B. um nicht zum Start zurückzulaufen).
+  ///
+  /// Die Distanz bleibt identisch (Luftlinie A→B = B→A), nur die Rollen der
+  /// beiden Punkte tauschen – die Karten-Marker (grün=Start, rot=Ziel) tauschen
+  /// dadurch automatisch. Ein bereits gespeicherter Track wird verworfen, damit
+  /// die getauschte Variante neu gespeichert werden kann.
+  void _swapStartEnd() {
+    final oldStart = _startPos;
+    final oldEnd = _endPos;
+    if (oldStart == null || oldEnd == null) return;
+
+    setState(() {
+      _startPos = oldEnd;
+      _endPos = oldStart;
+      _savedTrack = null;
     });
     _fitMap();
   }
@@ -545,6 +565,17 @@ class _MeasureScreenState extends State<MeasureScreen> {
               const SizedBox(height: 12),
               _buildComparisonCard(),
               const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _swapStartEnd,
+                icon: const Icon(Icons.swap_vert),
+                label: const Text('START & ZIEL TAUSCHEN'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.amber,
+                  side: BorderSide(color: Colors.amber.withValues(alpha: 0.6)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 16),
               _buildNameField(),
               const SizedBox(height: 24),
               _buildSaveButtons(),
@@ -640,7 +671,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
       ),
       child: Column(
         children: [
-          if (_isLoading || _isCapturing)
+          if (_isCapturing)
+            _buildCaptureAnimation()
+          else if (_isLoading)
             const CircularProgressIndicator(color: Colors.amber)
           else
             Icon(icon, size: 56, color: Colors.amber),
@@ -675,6 +708,24 @@ class _MeasureScreenState extends State<MeasureScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Rennender Mann (Lottie) während der GPS-Punkterfassung – begleitet die
+  /// "$_captureCount/$_requiredSamples Messungen"-Anzeige. Fehlt die
+  /// runner.json noch, zeigt der errorBuilder den bisherigen Ladeindikator.
+  ///
+  /// (Mit der echten Animationsdatei liesse sich die Laufgeschwindigkeit über
+  /// einen AnimationController zusätzlich an _captureCount koppeln.)
+  Widget _buildCaptureAnimation() {
+    return SizedBox(
+      height: 80,
+      child: Lottie.asset(
+        'assets/lottie/runner.json',
+        repeat: true,
+        errorBuilder: (_, _, _) =>
+            const CircularProgressIndicator(color: Colors.amber),
       ),
     );
   }
