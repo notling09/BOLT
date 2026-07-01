@@ -88,58 +88,60 @@ class _HomeScreenState extends State<HomeScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildHeader() {
-    // Echtes Logo aus assets/images/logo.png. Fehlt die Datei (noch), zeigt der
-    // errorBuilder das gestylte Text-Logo als Fallback.
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Image.asset(
-        'assets/images/logo.png',
-        height: 72,
-        fit: BoxFit.contain,
-        errorBuilder: (_, _, _) => _buildTextLogo(),
-      ),
+    // Zwei separate Bilder: links das Logo (B.O.L.T), rechts der Slogan.
+    // Fehlt eine Datei noch, zeigt der errorBuilder einen Text-Fallback.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Links: Logo
+        Image.asset(
+          'assets/images/logo.png',
+          height: 56,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _buildLogoFallback(),
+        ),
+        const Spacer(),
+        // Rechts: Slogan
+        Image.asset(
+          'assets/images/slogan.png',
+          height: 40,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _buildSloganFallback(),
+        ),
+      ],
     );
   }
 
-  /// Fallback-Logo (gestylter Schriftzug), solange keine Logo-Bilddatei da ist.
-  Widget _buildTextLogo() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  /// Fallback für das Logo (links), solange keine logo.png da ist.
+  Widget _buildLogoFallback() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          children: [
-            const Icon(Icons.bolt, size: 36, color: Colors.amber),
-            const SizedBox(width: 4),
-            Text(
-              'B.O.L.T.',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                fontStyle: FontStyle.italic,
-                color: Colors.amber,
-                letterSpacing: 1,
-                shadows: [
-                  Shadow(
-                    color: Colors.amber.withValues(alpha: 0.4),
-                    blurRadius: 12,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const Padding(
-          padding: EdgeInsets.only(left: 4),
-          child: Text(
-            'BREAK OLD LIMITS TODAY',
-            style: TextStyle(
-              letterSpacing: 3,
-              fontSize: 11,
-              color: Colors.white54,
-            ),
+        const Icon(Icons.bolt, size: 32, color: Colors.amber),
+        const SizedBox(width: 4),
+        Text(
+          'B.O.L.T.',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            fontStyle: FontStyle.italic,
+            color: Colors.amber,
+            letterSpacing: 1,
+            shadows: [
+              Shadow(color: Colors.amber.withValues(alpha: 0.4), blurRadius: 12),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  /// Fallback für den Slogan (rechts), solange keine slogan.png da ist.
+  Widget _buildSloganFallback() {
+    return const Text(
+      'BREAK OLD\nLIMITS TODAY',
+      textAlign: TextAlign.right,
+      style: TextStyle(letterSpacing: 2, fontSize: 10, color: Colors.white54),
     );
   }
 

@@ -1,0 +1,19 @@
+BILDER FUERS HAUPTMENUE (Header oben)
+=====================================
+
+Der Header zeigt jetzt ZWEI getrennte Bilder:
+
+  LINKS  ->  assets/images/logo.png     (nur das Logo, z. B. "B.O.L.T")
+  RECHTS ->  assets/images/slogan.png   (nur der Slogan, z. B. "Break Old Limits Today")
+
+Legt beide Dateien mit genau diesen Namen hier ab. Fehlt eine, erscheint ein
+Text-Fallback.
+
+Empfehlung: PNG mit transparentem Hintergrund.
+- logo.png   : Hoehe wird auf ca. 56 px skaliert
+- slogan.png : Hoehe wird auf ca. 40 px skaliert
+
+--------------------------------------------------
+APP-ICON (Launcher-Icon, separates Bild!):
+  assets/images/logoicon.png  ->  danach:  dart run flutter_launcher_icons
+Siehe PUT_APP_ICON_HERE.txt
