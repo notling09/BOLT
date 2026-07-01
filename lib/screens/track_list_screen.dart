@@ -57,6 +57,79 @@ class _TrackListScreenState extends State<TrackListScreen> {
     await _loadTracks();
   }
 
+  /// Dialog zum Umbenennen einer Strecke.
+  Future<void> _renameTrack(Track track) async {
+    final controller = TextEditingController(text: track.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Strecke umbenennen'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Neuer Name',
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.amber),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Speichern',
+                style: TextStyle(color: Colors.amber)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (newName == null || newName.isEmpty || track.id == null) return;
+    await _db.updateTrackName(track.id!, newName);
+    await _loadTracks();
+  }
+
+  /// Bestätigungs-Dialog und Löschen einer Strecke (inkl. ihrer Läufe).
+  Future<void> _deleteTrack(Track track) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Strecke löschen?'),
+        content: Text(
+          '«${track.name}» und alle zugehörigen Läufe werden gelöscht. '
+          'Das kann nicht rückgängig gemacht werden.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen',
+                style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || track.id == null) return;
+    await _db.deleteTrack(track.id!);
+    await _loadTracks();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -116,23 +189,87 @@ class _TrackListScreenState extends State<TrackListScreen> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: const Icon(Icons.place, color: Colors.amber),
-        title: Text(
-          track.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        leading: Icon(
+          track.isTemplate ? Icons.straighten : Icons.place,
+          color: Colors.amber,
+        ),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                track.name,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (track.isTemplate) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'VORGABE',
+                  style: TextStyle(
+                    color: Colors.amber,
+                    fontSize: 9,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
         subtitle: Text(
-          '${track.distanceMeters.toStringAsFixed(1)} m',
+          '${track.distanceMeters.toStringAsFixed(track.isTemplate ? 0 : 1)} m',
           style: const TextStyle(color: Colors.white54),
         ),
-        trailing: ElevatedButton(
-          onPressed: () => _startSprint(track),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber,
-            foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
-          child: const Text('SPRINT'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton(
+              onPressed: () => _startSprint(track),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text('SPRINT'),
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white54),
+              color: Colors.grey[850],
+              onSelected: (value) {
+                if (value == 'rename') _renameTrack(track);
+                if (value == 'delete') _deleteTrack(track);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'rename',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, color: Colors.amber, size: 18),
+                      SizedBox(width: 8),
+                      Text('Umbenennen'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.redAccent, size: 18),
+                      SizedBox(width: 8),
+                      Text('Löschen'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

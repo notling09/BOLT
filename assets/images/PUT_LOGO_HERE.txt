@@ -1,0 +1,8 @@
+Legt euer Logo hier als  logo.png  ab:
+
+    assets/images/logo.png
+
+Das Hauptmenue (home_screen.dart) zeigt automatisch dieses Bild an.
+Solange die Datei fehlt, erscheint als Fallback das gestylte "B.O.L.T."-Textlogo.
+
+Empfehlung: PNG mit transparentem Hintergrund, ca. 512 px breit.

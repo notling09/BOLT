@@ -97,6 +97,21 @@ class _HomeScreenState extends State<HomeScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildHeader() {
+    // Echtes Logo aus assets/images/logo.png. Fehlt die Datei (noch), zeigt der
+    // errorBuilder das gestylte Text-Logo als Fallback.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Image.asset(
+        'assets/images/logo.png',
+        height: 72,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => _buildTextLogo(),
+      ),
+    );
+  }
+
+  /// Fallback-Logo (gestylter Schriftzug), solange keine Logo-Bilddatei da ist.
+  Widget _buildTextLogo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

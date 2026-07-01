@@ -21,6 +21,11 @@ class Track {
   /// Distanz in Metern, von der App berechnet (Geolocator.distanceBetween).
   final double distanceMeters;
 
+  /// Vordefinierte "Fix-Strecke" (z. B. 50/100/200/300 m) ohne echte
+  /// GPS-Zielkoordinaten. Beim Sprinten wird distanz-basiert gestoppt
+  /// (gelaufene Distanz erreicht [distanceMeters]) statt per Zielradius.
+  final bool isTemplate;
+
   const Track({
     this.id,
     required this.name,
@@ -29,6 +34,7 @@ class Track {
     required this.endLat,
     required this.endLng,
     required this.distanceMeters,
+    this.isTemplate = false,
   });
 
   /// Für sqflite INSERT: id weglassen (wird von der DB vergeben).
@@ -39,6 +45,7 @@ class Track {
         'endLat': endLat,
         'endLng': endLng,
         'distanceMeters': distanceMeters,
+        'isTemplate': isTemplate ? 1 : 0,
       };
 
   /// Aus einer sqflite-Zeile (SELECT) ein Track-Objekt bauen.
@@ -50,5 +57,7 @@ class Track {
         endLat: map['endLat'] as double,
         endLng: map['endLng'] as double,
         distanceMeters: map['distanceMeters'] as double,
+        // Spalte kann bei alten DBs fehlen → sicher auf 0 defaulten.
+        isTemplate: (map['isTemplate'] as int? ?? 0) == 1,
       );
 }
