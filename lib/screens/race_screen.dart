@@ -226,6 +226,12 @@ class _RaceScreenState extends State<RaceScreen>
     _positionSub?.cancel();
     HapticFeedback.heavyImpact();
 
+    // Ziel-Sound: eigene finish.mp3, falls vorhanden – sonst Start-Beep als
+    // Fallback, damit auf jeden Fall ein hörbares Signal ertönt.
+    _beepPlayer.play(AssetSource('sounds/finish.mp3')).catchError((_) {
+      _beepPlayer.play(AssetSource('sounds/beep.mp3')).catchError((_) {});
+    });
+
     final ms = _timerService.elapsedMs;
     setState(() {
       _finalMs = ms;

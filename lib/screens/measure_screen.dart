@@ -276,6 +276,25 @@ class _MeasureScreenState extends State<MeasureScreen> {
     _fitMap();
   }
 
+  /// Start- und Zielpunkt vertauschen (z. B. um nicht zum Start zurückzulaufen).
+  ///
+  /// Die Distanz bleibt identisch (Luftlinie A→B = B→A), nur die Rollen der
+  /// beiden Punkte tauschen – die Karten-Marker (grün=Start, rot=Ziel) tauschen
+  /// dadurch automatisch. Ein bereits gespeicherter Track wird verworfen, damit
+  /// die getauschte Variante neu gespeichert werden kann.
+  void _swapStartEnd() {
+    final oldStart = _startPos;
+    final oldEnd = _endPos;
+    if (oldStart == null || oldEnd == null) return;
+
+    setState(() {
+      _startPos = oldEnd;
+      _endPos = oldStart;
+      _savedTrack = null;
+    });
+    _fitMap();
+  }
+
   /// Schwenkt/zoomt die Karte passend: beide Punkte einpassen, sonst auf den
   /// vorhandenen Punkt zentrieren. Nach dem Frame, damit die Karte bereit ist.
   void _fitMap() {
@@ -544,6 +563,17 @@ class _MeasureScreenState extends State<MeasureScreen> {
             if (_step == _Step.done) ...[
               const SizedBox(height: 12),
               _buildComparisonCard(),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _swapStartEnd,
+                icon: const Icon(Icons.swap_vert),
+                label: const Text('START & ZIEL TAUSCHEN'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.amber,
+                  side: BorderSide(color: Colors.amber.withValues(alpha: 0.6)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
               const SizedBox(height: 16),
               _buildNameField(),
               const SizedBox(height: 24),
