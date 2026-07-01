@@ -11,7 +11,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
 import '../services/location_service.dart';
-import 'motion_test_screen.dart';
 import 'race_screen.dart';
 
 /// Die drei Schritte der Streckenvermessung (UC1 / User-Story 1).
@@ -297,6 +296,8 @@ class _MeasureScreenState extends State<MeasureScreen>
   /// Kurze Bestätigung (SnackBar), dass ein Punkt erfolgreich gesetzt wurde.
   void _showPointSetHint(String msg) {
     if (!mounted) return;
+    // Evtl. noch sichtbare SnackBar sofort ersetzen, sonst wartet die neue.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -329,6 +330,7 @@ class _MeasureScreenState extends State<MeasureScreen>
       _savedTrack = null;
     });
     _fitMap();
+    _showPointSetHint('Start und Ziel getauscht');
   }
 
   /// Schwenkt/zoomt die Karte passend: beide Punkte einpassen, sonst auf den
@@ -580,16 +582,6 @@ class _MeasureScreenState extends State<MeasureScreen>
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.amber,
-        actions: [
-          // Temporaerer Zugang zum Sprint-Start-Test (Teil B).
-          IconButton(
-            icon: const Icon(Icons.directions_run),
-            tooltip: 'Sprint-Start-Test',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MotionTestScreen()),
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -672,7 +664,7 @@ class _MeasureScreenState extends State<MeasureScreen>
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        height: 220,
+        height: 170,
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
@@ -711,7 +703,7 @@ class _MeasureScreenState extends State<MeasureScreen>
     };
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
@@ -768,7 +760,7 @@ class _MeasureScreenState extends State<MeasureScreen>
   /// einen AnimationController zusätzlich an _captureCount koppeln.)
   Widget _buildCaptureAnimation() {
     return SizedBox(
-      height: 80,
+      height: 54,
       child: Lottie.asset(
         'assets/lottie/runner.json',
         controller: _runnerController,

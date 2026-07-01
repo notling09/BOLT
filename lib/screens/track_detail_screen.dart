@@ -248,19 +248,21 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _reMeasure,
-          icon: const Icon(Icons.straighten),
-          label: Text(_track.isTemplate
-              ? 'MIT GPS VERMESSEN'
-              : 'START/ZIEL NEU VERMESSEN'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.amber,
-            side: const BorderSide(color: Colors.amber),
-            padding: const EdgeInsets.symmetric(vertical: 14),
+        // "Start/Ziel ändern" nur für selbst vermessene Strecken – bei
+        // Vorgabe-Strecken (feste Distanz) ergibt das keinen Sinn.
+        if (!_track.isTemplate) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _reMeasure,
+            icon: const Icon(Icons.edit_location_alt),
+            label: const Text('START/ZIEL ÄNDERN'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.amber,
+              side: const BorderSide(color: Colors.amber),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

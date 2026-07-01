@@ -89,26 +89,39 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader() {
     // Zwei separate Bilder: links das Logo (B.O.L.T), rechts der Slogan.
-    // Fehlt eine Datei noch, zeigt der errorBuilder einen Text-Fallback.
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Links: Logo
-        Image.asset(
-          'assets/images/logo.png',
-          height: 56,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _buildLogoFallback(),
-        ),
-        const Spacer(),
-        // Rechts: Slogan
-        Image.asset(
-          'assets/images/slogan.png',
-          height: 40,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _buildSloganFallback(),
-        ),
-      ],
+    // Jedes Bild bekommt die halbe Breite (Expanded) und wird per BoxFit.contain
+    // hineinskaliert -> es kann NICHT mehr über den Rand hinauslaufen.
+    return SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          Expanded(
+            child: Image.asset(
+              'assets/images/logo.png',
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              errorBuilder: (_, _, _) => FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: _buildLogoFallback(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Image.asset(
+              'assets/images/slogan.png',
+              fit: BoxFit.contain,
+              alignment: Alignment.centerRight,
+              errorBuilder: (_, _, _) => FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: _buildSloganFallback(),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

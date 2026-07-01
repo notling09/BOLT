@@ -80,6 +80,9 @@ class _RaceScreenState extends State<RaceScreen>
   /// Fehler mit "Erneut versuchen"-Aktion (z. B. Lautstärke aus).
   bool _errorShowRetry = false;
 
+  /// Fehler mit "GPS einschalten"-Button (Standortdienst aus).
+  bool _errorShowGps = false;
+
   /// Steuert die Level-up-"Pop"-Animation (Skalierung des Badges).
   late final AnimationController _levelUpController;
   late final Animation<double> _levelUpScale;
@@ -372,24 +375,29 @@ class _RaceScreenState extends State<RaceScreen>
 
   /// Übersetzt einen LocationStatus in eine freundliche Meldung.
   void _setError(LocationStatus status) {
-    final (String msg, bool settings) = switch (status) {
+    // (Meldung, App-Einstellungen-Button, GPS-einschalten-Button)
+    final (String msg, bool settings, bool gps) = switch (status) {
       LocationStatus.serviceDisabled => (
-        'GPS ist ausgeschaltet.\nBitte in den Geräte-Einstellungen aktivieren.',
+        'GPS ist ausgeschaltet.\nBitte den Standort einschalten.',
         false,
+        true,
       ),
       LocationStatus.permissionDenied => (
         'Standort-Berechtigung verweigert.\nOhne Standort kann der Sprint nicht gemessen werden.',
+        false,
         false,
       ),
       LocationStatus.permissionDeniedForever => (
         'Berechtigung dauerhaft verweigert.\nBitte in den App-Einstellungen freigeben.',
         true,
+        false,
       ),
-      _ => ('Unbekannter GPS-Fehler.', false),
+      _ => ('Unbekannter GPS-Fehler.', false, false),
     };
     setState(() {
       _errorMessage = msg;
       _errorShowSettings = settings;
+      _errorShowGps = gps;
       _errorShowRetry = false;
       _checkingGps = false;
     });
@@ -402,6 +410,7 @@ class _RaceScreenState extends State<RaceScreen>
           'Der Start wird per Beep-Ton signalisiert – bei stummem Ton '
           'verpasst du das Signal.';
       _errorShowSettings = false;
+      _errorShowGps = false;
       _errorShowRetry = true;
       _checkingGps = false;
     });
@@ -436,6 +445,7 @@ class _RaceScreenState extends State<RaceScreen>
       _reactionMs = null;
       _errorMessage = null;
       _errorShowSettings = false;
+      _errorShowGps = false;
       _errorShowRetry = false;
     });
     _prepare();
@@ -823,6 +833,19 @@ class _RaceScreenState extends State<RaceScreen>
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
+        if (_errorShowGps) ...[
+          ElevatedButton.icon(
+            onPressed: Geolocator.openLocationSettings,
+            icon: const Icon(Icons.settings),
+            label: const Text('GPS EINSCHALTEN'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_errorShowSettings)
           TextButton(
             onPressed: _locationService.openAppSettings,
