@@ -1,0 +1,22 @@
+# GitLab CI/CD für BOLT (Flutter).
+#
+# Läuft bei jedem Push: statische Analyse + alle Tests (Unit + Snapshot).
+# Voraussetzung: ein GitLab-Runner mit Docker-Executor (shared oder eigener).
+
+stages:
+  - test
+
+flutter_test:
+  stage: test
+  image: ghcr.io/cirruslabs/flutter:stable
+  before_script:
+    - flutter --version
+    - flutter pub get
+  script:
+    - flutter analyze
+    - flutter test --coverage
+  artifacts:
+    when: always
+    paths:
+      - coverage/lcov.info
+    expire_in: 1 week
