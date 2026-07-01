@@ -45,6 +45,7 @@ dependencies:
   audioplayers: ^6.8.1
   volume_controller: ^3.6.0
   sensors_plus: ^7.1.0
+  lottie: ^3.4.0
 
 dev_dependencies:
   flutter_test:
@@ -79,9 +80,11 @@ flutter:
   uses-material-design: true
 
   # Phase 8: Assets – Sounds (Start-Beep + Level-up) und Logo im Hauptmenue.
+  # Lottie-Animationen (rennender Mann) unter assets/lottie/.
   assets:
     - assets/sounds/
     - assets/images/
+    - assets/lottie/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:lottie/lottie.dart' hide Marker;
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -670,7 +671,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
       ),
       child: Column(
         children: [
-          if (_isLoading || _isCapturing)
+          if (_isCapturing)
+            _buildCaptureAnimation()
+          else if (_isLoading)
             const CircularProgressIndicator(color: Colors.amber)
           else
             Icon(icon, size: 56, color: Colors.amber),
@@ -705,6 +708,24 @@ class _MeasureScreenState extends State<MeasureScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Rennender Mann (Lottie) während der GPS-Punkterfassung – begleitet die
+  /// "$_captureCount/$_requiredSamples Messungen"-Anzeige. Fehlt die
+  /// runner.json noch, zeigt der errorBuilder den bisherigen Ladeindikator.
+  ///
+  /// (Mit der echten Animationsdatei liesse sich die Laufgeschwindigkeit über
+  /// einen AnimationController zusätzlich an _captureCount koppeln.)
+  Widget _buildCaptureAnimation() {
+    return SizedBox(
+      height: 80,
+      child: Lottie.asset(
+        'assets/lottie/runner.json',
+        repeat: true,
+        errorBuilder: (_, _, _) =>
+            const CircularProgressIndicator(color: Colors.amber),
       ),
     );
   }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'screens/main_shell.dart';
+import 'screens/splash_screen.dart';
 
 /// Einstiegspunkt der App.
 Future<void> main() async {
@@ -31,7 +31,7 @@ class BoltApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const MainShell(),
+      home: const SplashScreen(),
     );
   }
 }
