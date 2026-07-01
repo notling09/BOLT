@@ -57,6 +57,67 @@ class _TrackListScreenState extends State<TrackListScreen> {
     await _loadTracks();
   }
 
+  /// Auswahl beim "+"-Button: GPS-Strecke vermessen oder eigene Distanz eingeben.
+  void _showAddOptions() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.place, color: Colors.amber),
+              title: const Text('Strecke vermessen'),
+              subtitle: const Text('Start- und Zielpunkt per GPS ablaufen'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openMeasure();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.straighten, color: Colors.amber),
+              title: const Text('Eigene Distanz'),
+              subtitle: const Text('Distanz direkt eingeben (z. B. 1000 m)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _addCustom();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Custom-Strecke: Name + Distanz eingeben, als Distanz-Strecke speichern.
+  ///
+  /// isTemplate = true → beim Sprint wird distanz-basiert gestoppt (kein
+  /// GPS-Ziel), genau wie bei den Vorgaben. Koordinaten bleiben 0.
+  Future<void> _addCustom() async {
+    final result = await showDialog<({String name, double distance})>(
+      context: context,
+      builder: (_) => const _CustomTrackDialog(),
+    );
+    if (result == null) return;
+
+    await _db.insertTrack(Track(
+      name: result.name,
+      startLat: 0,
+      startLng: 0,
+      endLat: 0,
+      endLng: 0,
+      distanceMeters: result.distance,
+      isTemplate: true,
+    ));
+    await _loadTracks();
+  }
+
   /// Dialog zum Umbenennen einer Strecke.
   Future<void> _renameTrack(Track track) async {
     final newName = await showDialog<String>(
@@ -113,6 +174,11 @@ class _TrackListScreenState extends State<TrackListScreen> {
         foregroundColor: Colors.amber,
         actions: [
           IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _showAddOptions,
+            tooltip: 'Strecke hinzufügen',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTracks,
             tooltip: 'Aktualisieren',
@@ -139,8 +205,8 @@ class _TrackListScreenState extends State<TrackListScreen> {
     if (_tracks!.isEmpty) {
       return _buildCentered(
         icon: Icons.place_outlined,
-        text: 'Noch keine Strecken gespeichert.\nMesse zuerst eine Strecke!',
-        button: ('Strecke vermessen', _openMeasure),
+        text: 'Noch keine Strecken vorhanden.',
+        button: ('Strecke hinzufügen', _showAddOptions),
       );
     }
 
@@ -183,7 +249,7 @@ class _TrackListScreenState extends State<TrackListScreen> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
-                  'VORGABE',
+                  'DISTANZ',
                   style: TextStyle(
                     color: Colors.amber,
                     fontSize: 9,
@@ -327,6 +393,99 @@ class _RenameDialogState extends State<_RenameDialog> {
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Speichern', style: TextStyle(color: Colors.amber)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog für eine eigene Distanz-Strecke: Name (optional) + Distanz in Metern.
+///
+/// Gibt bei "Speichern" einen Record `(name, distance)` zurück – aber nur,
+/// wenn die Distanz eine gültige positive Zahl ist. Sonst wird ein Fehler
+/// im Dialog angezeigt.
+class _CustomTrackDialog extends StatefulWidget {
+  const _CustomTrackDialog();
+
+  @override
+  State<_CustomTrackDialog> createState() => _CustomTrackDialogState();
+}
+
+class _CustomTrackDialogState extends State<_CustomTrackDialog> {
+  final _nameController = TextEditingController();
+  final _distanceController = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _distanceController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    // Komma oder Punkt als Dezimaltrenner erlauben.
+    final raw = _distanceController.text.trim().replaceAll(',', '.');
+    final distance = double.tryParse(raw);
+
+    if (distance == null || distance <= 0) {
+      setState(() => _error = 'Bitte eine gültige Distanz (> 0 m) eingeben.');
+      return;
+    }
+
+    final name = _nameController.text.trim();
+    Navigator.pop(context, (
+      name: name.isEmpty ? '${distance.round()} Meter' : name,
+      distance: distance,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.grey[900],
+      title: const Text('Eigene Distanz'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameController,
+            textCapitalization: TextCapitalization.sentences,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Name (optional)',
+              hintText: 'z. B. Parkstrecke',
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.amber),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _distanceController,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(color: Colors.white),
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              labelText: 'Distanz in Metern',
+              hintText: 'z. B. 1000',
+              errorText: _error,
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.amber),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Abbrechen', style: TextStyle(color: Colors.white54)),
+        ),
+        TextButton(
+          onPressed: _submit,
           child: const Text('Speichern', style: TextStyle(color: Colors.amber)),
         ),
       ],

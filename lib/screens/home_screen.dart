@@ -4,7 +4,6 @@ import '../models/player.dart';
 import '../models/run.dart';
 import '../services/database_service.dart';
 import '../services/game_service.dart';
-import 'measure_screen.dart';
 
 /// Hauptmenü / Home-Tab (Mockup 5.1): Level/XP oben, Aktions-Buttons, letzte Läufe.
 ///
@@ -40,14 +39,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _player = player;
       _recentRuns = runs;
     });
-  }
-
-  /// Vermessen-Screen pushen (kein Tab) und danach neu laden.
-  Future<void> _openMeasure() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const MeasureScreen()),
-    );
-    await _load();
   }
 
   /// Rang-Titel aus dem Level (Gamification-Flavor, Mockup zeigt "SPRINT-ROOKIE").
@@ -275,24 +266,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSecondaryButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: _secondaryButton(
-            icon: Icons.straighten,
-            label: 'STRECKE\nVERMESSEN',
-            onPressed: _openMeasure,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _secondaryButton(
-            icon: Icons.bar_chart,
-            label: 'STATISTIK',
-            onPressed: () => widget.onGoToTab?.call(2),
-          ),
-        ),
-      ],
+    // "Strecke vermessen" ist ins Strecken-"+"-Menü gewandert; hier bleibt
+    // nur der Schnellzugriff auf die Statistik.
+    return _secondaryButton(
+      icon: Icons.bar_chart,
+      label: 'STATISTIK',
+      onPressed: () => widget.onGoToTab?.call(2),
     );
   }
 
