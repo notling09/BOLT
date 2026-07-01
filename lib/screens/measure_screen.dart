@@ -35,7 +35,8 @@ class MeasureScreen extends StatefulWidget {
   State<MeasureScreen> createState() => _MeasureScreenState();
 }
 
-class _MeasureScreenState extends State<MeasureScreen> {
+class _MeasureScreenState extends State<MeasureScreen>
+    with SingleTickerProviderStateMixin {
   final _locationService = LocationService();
   final _db = DatabaseService.instance;
   final _nameController = TextEditingController();
@@ -45,6 +46,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   /// Zuletzt bekannte aktuelle Position (für den Live-Marker auf der Karte).
   LatLng? _currentLatLng;
+
+  /// Steuert die Lauf-Animation (Stickman) während der Punkterfassung.
+  /// Wird mit jeder akzeptierten Messung schneller (an _captureCount gekoppelt).
+  late final AnimationController _runnerController =
+      AnimationController(vsync: this);
+  Duration? _runnerBaseDuration; // Original-Laufdauer der Animation (1x-Tempo)
 
   _Step _step = _Step.idle;
   bool _isLoading = false;
@@ -148,6 +155,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     _captureTimer?.cancel();
     _stepSub?.cancel();
     _nameController.dispose();
+    _runnerController.dispose();
     super.dispose();
   }
 
@@ -203,6 +211,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     });
     _startLiveTracking(start); // ab jetzt live mitzaehlen
     _fitMap();
+    _showPointSetHint('Startpunkt gesetzt');
   }
 
   Future<void> _setEnd() async {
@@ -275,6 +284,25 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _step = _Step.done;
     });
     _fitMap();
+    _showPointSetHint('Zielpunkt gesetzt');
+  }
+
+  /// Kurze Bestätigung (SnackBar), dass ein Punkt erfolgreich gesetzt wurde.
+  void _showPointSetHint(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(msg),
+          ],
+        ),
+        backgroundColor: Colors.green[800],
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   /// Start- und Zielpunkt vertauschen (z. B. um nicht zum Start zurückzulaufen).
@@ -373,6 +401,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       if (pos.accuracy <= _goodAccuracyMeters) {
         samples.add(pos);
         setState(() => _captureCount = samples.length);
+        _applyRunnerSpeed(); // Stickman wird mit jeder Messung schneller
         if (samples.length >= _requiredSamples) {
           finish(_averagePosition(samples));
         }
@@ -723,11 +752,27 @@ class _MeasureScreenState extends State<MeasureScreen> {
       height: 80,
       child: Lottie.asset(
         'assets/lottie/runner.json',
-        repeat: true,
+        controller: _runnerController,
+        onLoaded: (composition) {
+          _runnerBaseDuration = composition.duration;
+          _applyRunnerSpeed();
+        },
         errorBuilder: (_, _, _) =>
             const CircularProgressIndicator(color: Colors.amber),
       ),
     );
+  }
+
+  /// Setzt das Lauf-Tempo des Stickman abhängig von der Anzahl akzeptierter
+  /// Messungen: 1x bei 0 Messungen, danach pro Messung ~60% schneller.
+  void _applyRunnerSpeed() {
+    final base = _runnerBaseDuration;
+    if (base == null) return;
+    final speed = 1.0 + _captureCount * 0.6; // 0→1x, 5→~4x
+    _runnerController.duration = base * (1 / speed);
+    _runnerController
+      ..reset()
+      ..repeat();
   }
 
   Widget _coordRow(String label, Position pos) {
@@ -797,20 +842,25 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   /// Roter Hinweis-Block, wenn GPS nicht verfügbar / keine Berechtigung.
   Widget _buildErrorCard() {
-    final (String msg, bool showSettingsButton) = switch (_gpsError) {
+    // Pro Fehlerart: Text + optionaler Aktions-Button (Label + Aktion).
+    final (String msg, String? actionLabel, VoidCallback? action) =
+        switch (_gpsError) {
       LocationStatus.serviceDisabled => (
-        'GPS ist ausgeschaltet.\nBitte in den Geräte-Einstellungen aktivieren.',
-        false,
+        'GPS ist ausgeschaltet.\nBitte den Standort einschalten.',
+        'GPS EINSCHALTEN',
+        Geolocator.openLocationSettings, // öffnet die Standort-Einstellungen
       ),
       LocationStatus.permissionDenied => (
         'Standort-Berechtigung verweigert.\nBitte nochmals erlauben.',
-        false,
+        null,
+        null,
       ),
       LocationStatus.permissionDeniedForever => (
         'Berechtigung dauerhaft verweigert.\nBitte in den App-Einstellungen freigeben.',
-        true,
+        'APP-EINSTELLUNGEN ÖFFNEN',
+        _locationService.openAppSettings,
       ),
-      _ => ('Unbekannter GPS-Fehler.', false),
+      _ => ('Unbekannter GPS-Fehler.', null, null),
     };
 
     return Container(
@@ -831,14 +881,21 @@ class _MeasureScreenState extends State<MeasureScreen> {
               Expanded(child: Text(msg, style: const TextStyle(fontSize: 13))),
             ],
           ),
-          if (showSettingsButton)
-            TextButton(
-              onPressed: _locationService.openAppSettings,
-              child: const Text(
-                'App-Einstellungen öffnen',
-                style: TextStyle(color: Colors.amber),
+          if (action != null && actionLabel != null) ...[
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: action,
+                icon: const Icon(Icons.settings, size: 18),
+                label: Text(actionLabel),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                ),
               ),
             ),
+          ],
         ],
       ),
     );
