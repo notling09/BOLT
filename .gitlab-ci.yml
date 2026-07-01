@@ -8,7 +8,9 @@ stages:
 
 flutter_test:
   stage: test
-  image: ghcr.io/cirruslabs/flutter:stable
+  # Feste Version statt :stable – muss Dart >= 3.12.2 (pubspec) erfüllen und
+  # deckt sich mit dem lokalen Flutter 3.44.4, was auch Golden-Tests stabiler macht.
+  image: ghcr.io/cirruslabs/flutter:3.44.4
   before_script:
     - flutter --version
     - flutter pub get
