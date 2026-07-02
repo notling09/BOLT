@@ -440,8 +440,9 @@ class _CustomTrackDialogState extends State<_CustomTrackDialog> {
     final raw = _distanceController.text.trim().replaceAll(',', '.');
     final distance = double.tryParse(raw);
 
-    if (distance == null || distance <= 0) {
-      setState(() => _error = 'Bitte eine gültige Distanz (> 0 m) eingeben.');
+    if (distance == null || distance < 25) {
+      setState(() => _error =
+          'Bitte mindestens 25 m eingeben – kürzere Distanzen sind zu ungenau.');
       return;
     }
 
@@ -480,7 +481,7 @@ class _CustomTrackDialogState extends State<_CustomTrackDialog> {
             style: const TextStyle(color: Colors.white),
             onSubmitted: (_) => _submit(),
             decoration: InputDecoration(
-              labelText: 'Distanz in Metern',
+              labelText: 'Distanz in Metern (min. 25)',
               hintText: 'z. B. 1000',
               errorText: _error,
               focusedBorder: const UnderlineInputBorder(
