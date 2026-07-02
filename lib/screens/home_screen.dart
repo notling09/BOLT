@@ -5,6 +5,7 @@ import '../models/run.dart';
 import '../services/database_service.dart';
 import '../services/game_service.dart';
 import '../utils/format.dart';
+import '../widgets/rank_badge.dart';
 
 /// Hauptmenü / Home-Tab (Mockup 5.1): Level/XP oben, Aktions-Buttons, letzte Läufe.
 ///
@@ -205,22 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.amber,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'LV.${player.level}',
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
+              RankBadge(level: player.level),
             ],
           ),
           const SizedBox(height: 14),
