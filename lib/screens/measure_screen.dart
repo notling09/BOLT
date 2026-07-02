@@ -69,9 +69,8 @@ class _MeasureScreenState extends State<MeasureScreen>
   /// Gesetzt, wenn ein GPS-Aufruf fehlschlug (serviceDisabled / permissionDenied…).
   LocationStatus? _gpsError;
 
-  /// Mindest-Distanz für eine eigene Strecke. Darunter ist die Messung wegen
-  /// GPS-Rauschen (±3–5 m) zu ungenau → Speichern/Sprinten wird gesperrt.
-  static const double _minDistanceMeters = 25.0;
+  /// Unter dieser Distanz warnen wir vor GPS-Rauschen (±3–5 m Ungenauigkeit).
+  static const double _minDistanceMeters = 10.0;
 
   /// Live mitlaufende Luftlinie Start -> aktuelle Position (Variante A).
   /// Nur waehrend des Messens (Step.startSet) aktiv.
@@ -963,8 +962,8 @@ class _MeasureScreenState extends State<MeasureScreen>
             const Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text(
-                'Zu kurz – mindestens 25 m nötig.\n'
-                'Kürzere Strecken sind mit GPS zu ungenau (±3–5 m Rauschen).',
+                'Strecke zu kurz – wahrscheinlich GPS-Rauschen (±3–5 m).\n'
+                'Bitte Start und Ziel weiter auseinandersetzen.',
                 style: TextStyle(color: Colors.orange, fontSize: 12),
               ),
             )
@@ -1208,39 +1207,11 @@ class _MeasureScreenState extends State<MeasureScreen>
 
   Widget _buildSaveButtons() {
     final busy = _isSaving || _isLoading;
-    // Zu kurze Strecken (< 25 m) sind mit GPS zu ungenau → nicht speicherbar.
-    final effective = _combinedDistance() ?? _distance;
-    final tooShort = effective != null && effective < _minDistanceMeters;
-    final canSave = !busy && !tooShort;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (tooShort) ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.warning_amber, color: Colors.orange, size: 18),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Mindestens 25 m nötig. Miss Start und Ziel weiter auseinander.',
-                    style: TextStyle(color: Colors.orange, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
         ElevatedButton.icon(
-          onPressed: canSave ? _saveAndSprint : null,
+          onPressed: busy ? null : _saveAndSprint,
           icon: busy
               ? const SizedBox(
                   width: 18,
@@ -1255,14 +1226,12 @@ class _MeasureScreenState extends State<MeasureScreen>
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.amber,
             foregroundColor: Colors.black,
-            disabledBackgroundColor: Colors.grey[850],
-            disabledForegroundColor: Colors.white30,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: (canSave && _savedTrack == null) ? _saveOnly : null,
+          onPressed: (busy || _savedTrack != null) ? null : _saveOnly,
           icon: const Icon(Icons.save_outlined),
           label: Text(_savedTrack != null ? 'GESPEICHERT' : 'NUR SPEICHERN'),
           style: OutlinedButton.styleFrom(
