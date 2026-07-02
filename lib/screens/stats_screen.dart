@@ -6,6 +6,7 @@ import '../models/track.dart';
 import '../services/database_service.dart';
 import '../services/game_service.dart';
 import '../utils/format.dart';
+import '../widgets/stat_card.dart';
 
 /// Statistik-Screen: Level + XP (US4) und Bestzeiten pro Strecke (US5 / UC3).
 class StatsScreen extends StatefulWidget {
@@ -112,10 +113,28 @@ class _StatsScreenState extends State<StatsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _buildPlayerCard(),
+          const SizedBox(height: 16),
+          _buildSummaryRow(),
           const SizedBox(height: 24),
           _buildTracksSection(),
         ],
       ),
+    );
+  }
+
+  /// Kurze Gesamt-Übersicht aus zwei [StatCard]s: Anzahl Strecken und Läufe.
+  Widget _buildSummaryRow() {
+    final data = _data ?? [];
+    final trackCount = data.length;
+    // Läufe über alle Strecken aufsummieren.
+    final runCount = data.fold<int>(0, (sum, entry) => sum + entry.$2.length);
+
+    return Row(
+      children: [
+        Expanded(child: StatCard(label: 'STRECKEN', value: '$trackCount')),
+        const SizedBox(width: 12),
+        Expanded(child: StatCard(label: 'LÄUFE', value: '$runCount')),
+      ],
     );
   }
 
