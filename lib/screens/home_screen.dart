@@ -4,6 +4,7 @@ import '../models/player.dart';
 import '../models/run.dart';
 import '../services/database_service.dart';
 import '../services/game_service.dart';
+import '../utils/format.dart';
 
 /// Hauptmenü / Home-Tab (Mockup 5.1): Level/XP oben, Aktions-Buttons, letzte Läufe.
 ///
@@ -47,14 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (level >= 6) return 'SPEEDSTER';
     if (level >= 3) return 'SPRINTER';
     return 'SPRINT-ROOKIE';
-  }
-
-  String _formatTime(int ms) {
-    final d = Duration(milliseconds: ms);
-    final min = d.inMinutes.toString().padLeft(2, '0');
-    final sec = (d.inSeconds % 60).toString().padLeft(2, '0');
-    final hund = ((ms % 1000) ~/ 10).toString().padLeft(2, '0');
-    return '$min:$sec.$hund';
   }
 
   @override
@@ -404,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _formatDate(entry.run.date),
+                  formatDateRelative(entry.run.date),
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
               ],
@@ -414,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                _formatTime(entry.run.durationMs),
+                formatTime(entry.run.durationMs),
                 style: const TextStyle(
                   color: Colors.amber,
                   fontWeight: FontWeight.bold,
@@ -433,17 +426,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final runDay = DateTime(date.year, date.month, date.day);
-    final diff = today.difference(runDay).inDays;
-
-    final time =
-        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    if (diff == 0) return 'Heute, $time';
-    if (diff == 1) return 'Gestern, $time';
-    return '${date.day.toString().padLeft(2, '0')}.'
-        '${date.month.toString().padLeft(2, '0')}.${date.year}';
-  }
 }

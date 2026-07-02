@@ -5,6 +5,7 @@ import '../models/run.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
 import '../services/game_service.dart';
+import '../utils/format.dart';
 
 /// Statistik-Screen: Level + XP (US4) und Bestzeiten pro Strecke (US5 / UC3).
 class StatsScreen extends StatefulWidget {
@@ -51,14 +52,6 @@ class _StatsScreenState extends State<StatsScreen> {
       if (!mounted) return;
       setState(() => _hasError = true);
     }
-  }
-
-  String _formatTime(int ms) {
-    final d = Duration(milliseconds: ms);
-    final min = d.inMinutes.toString().padLeft(2, '0');
-    final sec = (d.inSeconds % 60).toString().padLeft(2, '0');
-    final hund = ((ms % 1000) ~/ 10).toString().padLeft(2, '0');
-    return '$min:$sec.$hund';
   }
 
   @override
@@ -309,7 +302,7 @@ class _StatsScreenState extends State<StatsScreen> {
             const Icon(Icons.timer_outlined, color: Colors.white24, size: 16),
           const SizedBox(width: 8),
           Text(
-            _formatTime(run.durationMs),
+            formatTime(run.durationMs),
             style: TextStyle(
               color: isBest ? Colors.amber : Colors.white70,
               fontWeight: isBest ? FontWeight.bold : FontWeight.normal,
@@ -318,7 +311,7 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const Spacer(),
           Text(
-            _formatDate(run.date),
+            formatDate(run.date),
             style: const TextStyle(color: Colors.white38, fontSize: 11),
           ),
         ],
@@ -326,9 +319,4 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}.'
-        '${date.month.toString().padLeft(2, '0')}.'
-        '${date.year}';
-  }
 }

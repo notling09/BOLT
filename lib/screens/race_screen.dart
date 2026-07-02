@@ -14,6 +14,7 @@ import '../services/game_service.dart';
 import '../services/location_service.dart';
 import '../services/motion_service.dart';
 import '../services/timer_service.dart';
+import '../utils/format.dart';
 
 /// Die Phasen des Rennens (UC2/UC3, User-Stories 2 & 3).
 enum _Phase {
@@ -451,15 +452,6 @@ class _RaceScreenState extends State<RaceScreen>
     _prepare();
   }
 
-  /// Formatiert Millisekunden als MM:SS.hh.
-  String _formatTime(int ms) {
-    final duration = Duration(milliseconds: ms);
-    final minutes = duration.inMinutes.toString().padLeft(2, '0');
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-    final hundredths = ((ms % 1000) ~/ 10).toString().padLeft(2, '0');
-    return '$minutes:$seconds.$hundredths';
-  }
-
   // ---------------------------------------------------------------------------
   // UI
   // ---------------------------------------------------------------------------
@@ -621,7 +613,7 @@ class _RaceScreenState extends State<RaceScreen>
         ),
         const SizedBox(height: 24),
         Text(
-          _formatTime(_elapsedMs),
+          formatTime(_elapsedMs),
           style: const TextStyle(
             fontSize: 64,
             fontWeight: FontWeight.bold,
@@ -672,7 +664,7 @@ class _RaceScreenState extends State<RaceScreen>
         ),
         const SizedBox(height: 24),
         Text(
-          _formatTime(_finalMs),
+          formatTime(_finalMs),
           style: const TextStyle(
             fontSize: 64,
             fontWeight: FontWeight.bold,

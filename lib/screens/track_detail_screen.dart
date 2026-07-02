@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/run.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
+import '../utils/format.dart';
 import 'race_screen.dart';
 
 /// Übersicht zu einer gespeicherten Strecke (Phase 9).
@@ -92,14 +93,6 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         duration: const Duration(seconds: 2),
       ),
     );
-  }
-
-  String _formatTime(int ms) {
-    final d = Duration(milliseconds: ms);
-    final min = d.inMinutes.toString().padLeft(2, '0');
-    final sec = (d.inSeconds % 60).toString().padLeft(2, '0');
-    final hund = ((ms % 1000) ~/ 10).toString().padLeft(2, '0');
-    return '$min:$sec.$hund';
   }
 
   @override
@@ -224,7 +217,7 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         Expanded(
           child: _statCard(
             'BESTZEIT',
-            best != null ? _formatTime(best.durationMs) : '—',
+            best != null ? formatTime(best.durationMs) : '—',
           ),
         ),
       ],
@@ -352,12 +345,12 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _formatDate(run.date),
+              formatDateWithTime(run.date),
               style: const TextStyle(color: Colors.white54, fontSize: 13),
             ),
           ),
           Text(
-            _formatTime(run.durationMs),
+            formatTime(run.durationMs),
             style: const TextStyle(
               color: Colors.amber,
               fontWeight: FontWeight.bold,
@@ -369,10 +362,4 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    final t =
-        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    return '${date.day.toString().padLeft(2, '0')}.'
-        '${date.month.toString().padLeft(2, '0')}.${date.year}  $t';
-  }
 }
