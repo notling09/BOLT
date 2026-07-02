@@ -6,6 +6,7 @@ import '../models/run.dart';
 import '../models/track.dart';
 import '../services/database_service.dart';
 import '../utils/format.dart';
+import '../widgets/empty_hint.dart';
 import 'race_screen.dart';
 
 /// Übersicht zu einer gespeicherten Strecke (Phase 9).
@@ -307,18 +308,9 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         ),
         const SizedBox(height: 12),
         if (_runs.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              'Noch keine Läufe auf dieser Strecke.\nSprint starten!',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-            ),
+          const EmptyHint(
+            icon: Icons.directions_run,
+            text: 'Noch keine Läufe auf dieser Strecke.\nSprint starten!',
           )
         else
           ..._runs.asMap().entries.map((e) => _buildRunTile(e.key, e.value)),
