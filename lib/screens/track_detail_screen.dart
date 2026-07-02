@@ -7,6 +7,7 @@ import '../models/track.dart';
 import '../services/database_service.dart';
 import '../utils/format.dart';
 import '../widgets/empty_hint.dart';
+import '../widgets/stat_card.dart';
 import 'race_screen.dart';
 
 /// Übersicht zu einer gespeicherten Strecke (Phase 9).
@@ -209,49 +210,20 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
     return Row(
       children: [
         Expanded(
-          child: _statCard(
-            'DISTANZ',
-            '${_track.distanceMeters.toStringAsFixed(_track.isTemplate ? 0 : 1)} m',
+          child: StatCard(
+            label: 'DISTANZ',
+            value:
+                '${_track.distanceMeters.toStringAsFixed(_track.isTemplate ? 0 : 1)} m',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _statCard(
-            'BESTZEIT',
-            best != null ? formatTime(best.durationMs) : '—',
+          child: StatCard(
+            label: 'BESTZEIT',
+            value: best != null ? formatTime(best.durationMs) : '—',
           ),
         ),
       ],
-    );
-  }
-
-  Widget _statCard(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-                color: Colors.white54, fontSize: 11, letterSpacing: 1.2),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.amber,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
